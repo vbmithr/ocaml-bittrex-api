@@ -37,7 +37,7 @@ module Stringable = struct
   end
 end
 
-module API (H: HTTP_CLIENT) = struct
+module Bittrex (H: HTTP_CLIENT) = struct
   open H
 
   module Market = struct
@@ -115,5 +115,118 @@ module API (H: HTTP_CLIENT) = struct
 
     let book pair = get "public/getorderbook"
         ["market", pair; "type", "both"; "depth", "50"] book_of_yojson
+  end
+end
+
+module Cryptsy (H: HTTP_CLIENT) = struct
+  open H
+
+  module Currency = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          id: string;
+          name: string;
+          code: string;
+          maintenance: string;
+        } [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let currencies () = get "currencies" [] ts_of_json
+    end
+
+    type t = {
+      id: int;
+      name: string;
+      code: string;
+      maintenance: int;
+    } [@@deriving show,yojson]
+
+    let of_raw r = {
+      id = int_of_string r.Raw.id;
+      name = r.Raw.name;
+      code = r.Raw.code;
+      maintenance = int_of_string r.Raw.maintenance;
+    }
+
+    let currencies () = Raw.currencies () >>= fun ts -> return @@ List.map of_raw ts
+  end
+
+  module Market = struct
+
+    type stats = {
+      volume: float;
+      volume_btc: float;
+      price_high: float;
+      price_low: float;
+    } [@@deriving show,yojson]
+
+    type last_trade = {
+      price: float;
+      date: string;
+      timestamp: int;
+    } [@@deriving show,yojson]
+
+    module Raw = struct
+      module T = struct
+        type t = {
+          id: string;
+          label: string;
+          coin_currency_id: string;
+          market_currency_id: string;
+          maintenance_mode: string;
+          verifiedonly: bool;
+          stats [@key "24hr"] : stats;
+          last_trade: last_trade;
+        } [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let markets () = get "markets" [] ts_of_json
+    end
+
+    type t = {
+      id: int;
+      label: string;
+      coin_currency_id: int;
+      market_currency_id: int;
+      maintenance_mode: int;
+      verifiedonly: bool;
+      stats : stats;
+      last_trade: last_trade;
+    } [@@deriving show,yojson]
+
+    let of_raw t = {
+      id = int_of_string t.Raw.id;
+      label = t.Raw.label;
+      coin_currency_id = int_of_string t.Raw.coin_currency_id;
+      market_currency_id = int_of_string t.Raw.market_currency_id;
+      maintenance_mode = int_of_string t.Raw.maintenance_mode;
+      verifiedonly = t.Raw.verifiedonly;
+      stats = t.Raw.stats;
+      last_trade = t.Raw.last_trade;
+    }
+
+    let markets () = Raw.markets () >>= fun ts -> return @@ List.map of_raw ts
+  end
+
+  module Ticker = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          bid [@key "Bid"] : float;
+          ask [@key "Ask"] : float;
+          last [@key "Last"] : float;
+        } [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let ticker pair = get "public/getticker" ["market", pair] of_yojson
+    end
+    include Raw
   end
 end

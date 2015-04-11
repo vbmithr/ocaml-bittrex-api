@@ -8,7 +8,7 @@ module type HTTP_CLIENT = sig
   (*   (string -> [< `Error of string | `Ok of 'a ]) -> 'a t *)
 end
 
-module API(H: HTTP_CLIENT) : sig
+module Bittrex(H: HTTP_CLIENT) : sig
   module Market : sig
     type t = {
       market_currency: string;
@@ -66,5 +66,46 @@ module API(H: HTTP_CLIENT) : sig
     } [@@deriving show,yojson]
 
     val book : string -> book H.t
+  end
+end
+
+module Cryptsy (H: HTTP_CLIENT) : sig
+  module Currency : sig
+    type t = {
+      id: int;
+      name: string;
+      code: string;
+      maintenance: int;
+    } [@@deriving show,yojson]
+
+    val currencies : unit -> t list H.t
+  end
+
+  module Market : sig
+    type stats = {
+      volume: float;
+      volume_btc: float;
+      price_high: float;
+      price_low: float;
+    } [@@deriving show,yojson]
+
+    type last_trade = {
+      price: float;
+      date: string;
+      timestamp: int;
+    } [@@deriving show,yojson]
+
+    type t = {
+      id: int;
+      label: string;
+      coin_currency_id: int;
+      market_currency_id: int;
+      maintenance_mode: int;
+      verifiedonly: bool;
+      stats : stats;
+      last_trade: last_trade;
+    } [@@deriving show,yojson]
+
+    val markets : unit -> t list H.t
   end
 end
