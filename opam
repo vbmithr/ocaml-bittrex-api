@@ -1,0 +1,16 @@
+opam-version: "1.2"
+name: "bittrex"
+version: "0.1"
+maintainer: "Vincent Bernardoff <vb@luminar.eu.org>"
+authors: "Vincent Bernardoff <vb@luminar.eu.org>"
+homepage: "http://github.com/vbmithr/ocaml-bittrex-api"
+dev-repo: "git://github.com/vbmithr/ocaml-bittrex-api"
+bug-reports: "http://github.com/vbmithr/ocaml-bittrex-api/issues"
+license: "ISC"
+build: [
+  [ "ocaml" "pkg/build.ml" "native=true" "native-dynlink=true" ]
+]
+depends: [
+  "ocamlfind" {build} "ppx_deriving_yojson"
+  "lwt" "cohttp" "nocrypto" "cstruct"
+]
