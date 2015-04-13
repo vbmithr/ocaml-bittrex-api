@@ -37,6 +37,96 @@ module Stringable = struct
   end
 end
 
+module Bitfinex (H: HTTP_CLIENT) = struct
+  open H
+
+  module Ticker = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          mid: string;
+          bid: string;
+          ask: string;
+          last_price: string;
+          low: string;
+          high: string;
+          volume: string;
+          timestamp: string;
+        } [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let ticker pair = get ("pubticker/" ^ pair) [] of_yojson
+    end
+
+    type t = {
+      mid: float;
+      bid: float;
+      ask: float;
+      last_price: float;
+      low: float;
+      high: float;
+      volume: float;
+      timestamp: float;
+    } [@@deriving show,yojson]
+
+    let of_raw r =
+      {
+        mid = float_of_string r.Raw.mid;
+        bid = float_of_string r.Raw.bid;
+        ask = float_of_string r.Raw.ask;
+        last_price = float_of_string r.Raw.last_price;
+        low = float_of_string r.Raw.low;
+        high = float_of_string r.Raw.high;
+        volume = float_of_string r.Raw.volume;
+        timestamp = float_of_string r.Raw.timestamp;
+      }
+    let ticker pair = Raw.ticker pair >>= fun t -> return @@ of_raw t
+  end
+
+  module OrderBook = struct
+    type 'a book = {
+      bids: 'a list;
+      asks: 'a list;
+    } [@@deriving show,yojson]
+
+    module Raw = struct
+      module T = struct
+        type order = {
+          price: string;
+          amount: string;
+          timestamp: string;
+        } [@@deriving show,yojson]
+
+        type t = order book [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let book pair = get ("book/" ^ pair) [] of_yojson
+    end
+
+    type order = {
+      price: float;
+      amount: float;
+      timestamp: float;
+    } [@@deriving show,yojson]
+
+    type t = order book
+
+    let of_raw r =
+      {
+        price = float_of_string r.Raw.price;
+        amount = float_of_string r.Raw.amount;
+        timestamp = float_of_string r.Raw.timestamp;
+      }
+
+    let book pair = Raw.book pair >>= fun { bids; asks; } ->
+      return @@ { bids = List.map of_raw bids; asks = List.map of_raw asks }
+  end
+end
+
 module Bittrex (H: HTTP_CLIENT) = struct
   open H
 

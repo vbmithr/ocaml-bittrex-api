@@ -2,6 +2,34 @@ open Async.Std
 open Cohttp_async
 open Bittrex
 
+module type ASYNC_HTTP_CLIENT = sig
+  include Cohttp.S.IO
+    with type 'a t = 'a Deferred.t
+     and type ic = Reader.t
+     and type oc = Writer.t
+
+  val get : string -> (string * string) list ->
+    (Yojson.Safe.json -> [`Error of string | `Ok of 'a ]) -> 'a t
+end
+
+module Bitfinex = struct
+  include Cohttp_async_io
+
+  let base_uri = "https://api.bitfinex.com/v1/"
+  let mk_uri section = Uri.of_string @@ base_uri ^ section
+
+  (* GET / unauthentified *)
+
+  let get endpoint params yojson_to_a =
+    let uri = mk_uri endpoint in
+    Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
+    Body.to_string body >>= fun s ->
+    Yojson.Safe.from_string s |>
+    yojson_to_a |>
+    function | `Ok r -> return r
+             | `Error reason -> failwith reason
+end
+
 module Bittrex = struct
   include Cohttp_async_io
 
