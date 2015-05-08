@@ -63,6 +63,27 @@ module Bittrex (H: HTTP_CLIENT) : sig
     val markets : unit -> t list H.t
   end
 
+  module MarketSummary : sig
+    type t = {
+      market_name: string;
+      high: float;
+      low: float;
+      volume: float;
+      last: float;
+      base_volume: float;
+      timestamp: string;
+      bid: float;
+      ask: float;
+      open_buy_orders: int;
+      open_sell_orders: int;
+      prev_day: float;
+      created: string;
+    } [@@deriving show,yojson]
+
+    val summaries : unit -> t list H.t
+    val summary : string -> t list H.t
+  end
+
   module Ticker : sig
     type t = {
       bid: float;

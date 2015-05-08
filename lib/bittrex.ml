@@ -156,6 +156,35 @@ module Bittrex (H: HTTP_CLIENT) = struct
     include Raw
   end
 
+  module MarketSummary = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          market_name [@key "MarketName"]: string;
+          high [@key "High"]: float;
+          low [@key "Low"]: float;
+          volume [@key "Volume"]: float;
+          last [@key "Last"]: float;
+          base_volume [@key "BaseVolume"]: float;
+          timestamp [@key "TimeStamp"]: string;
+          bid [@key "Bid"]: float;
+          ask [@key "Ask"]: float;
+          open_buy_orders [@key "OpenBuyOrders"]: int;
+          open_sell_orders [@key "OpenSellOrders"]: int;
+          prev_day [@key "PrevDay"]: float;
+          created [@key "Created"]: string;
+        } [@@deriving show,yojson]
+      end
+
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let summaries () = get "public/getmarketsummaries" [] ts_of_json
+      let summary pair = get "public/getmarketsummary" ["market", pair] ts_of_json
+    end
+    include Raw
+  end
+
   module Ticker = struct
     module Raw = struct
       module T = struct
