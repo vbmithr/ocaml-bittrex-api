@@ -165,4 +165,14 @@ module Cryptsy (H: HTTP_CLIENT) : sig
 
     val markets : unit -> t list H.t
   end
+
+  module Ticker : sig
+    type t = {
+      id: int;
+      bid: float;
+      ask: float;
+    } [@@deriving show,yojson]
+
+    val tickers : unit -> t list H.t
+  end
 end

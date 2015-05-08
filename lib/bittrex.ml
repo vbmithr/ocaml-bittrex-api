@@ -336,16 +336,29 @@ module Cryptsy (H: HTTP_CLIENT) = struct
     module Raw = struct
       module T = struct
         type t = {
-          bid [@key "Bid"] : float;
-          ask [@key "Ask"] : float;
-          last [@key "Last"] : float;
+          id: string;
+          bid: float;
+          ask: float;
         } [@@deriving show,yojson]
       end
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker pair = get "public/getticker" ["market", pair] of_yojson
+      let tickers () = get "markets/ticker" [] ts_of_json
     end
-    include Raw
+
+    type t = {
+      id: int;
+      bid: float;
+      ask: float;
+    } [@@deriving show,yojson]
+
+    let of_raw t = {
+      id = int_of_string t.Raw.id;
+      bid = t.Raw.bid;
+      ask = t.Raw.ask;
+    }
+
+    let tickers () = Raw.tickers () >>= fun ts -> return @@ List.map of_raw ts
   end
 end
