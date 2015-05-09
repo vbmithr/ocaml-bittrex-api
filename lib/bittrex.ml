@@ -362,3 +362,30 @@ module Cryptsy (H: HTTP_CLIENT) = struct
     let tickers () = Raw.tickers () >>= fun ts -> return @@ List.map of_raw ts
   end
 end
+
+module BTCE (H: HTTP_CLIENT) = struct
+  open H
+
+  module Ticker = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          high: float;
+          low: float;
+          avg: float;
+          vol: float;
+          vol_cur: float;
+          last: float;
+          buy: float;
+          sell: float;
+          updated: int;
+        } [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let ticker pair = get ("ticker/" ^ pair) [] of_yojson
+    end
+    include Raw
+  end
+end

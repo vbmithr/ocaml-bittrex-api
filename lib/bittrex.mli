@@ -176,3 +176,21 @@ module Cryptsy (H: HTTP_CLIENT) : sig
     val tickers : unit -> t list H.t
   end
 end
+
+module BTCE (H: HTTP_CLIENT): sig
+  module Ticker : sig
+    type t = {
+      high: float;
+      low: float;
+      avg: float;
+      vol: float;
+      vol_cur: float;
+      last: float;
+      buy: float;
+      sell: float;
+      updated: int;
+    } [@@deriving show,yojson]
+
+    val ticker : string -> t H.t
+  end
+end

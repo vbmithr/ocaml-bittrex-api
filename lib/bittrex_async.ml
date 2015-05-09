@@ -30,6 +30,24 @@ module Bitfinex = struct
              | `Error reason -> failwith reason
 end
 
+module BTCE = struct
+  include Cohttp_async_io
+
+  let version = "3"
+  let base_uri = "https://btc-e.com/api/" ^ version ^ "/"
+  let mk_uri section = Uri.of_string @@ base_uri ^ section
+
+  let get endpoint _ yojson_to_a =
+    let uri = mk_uri endpoint in
+    Client.get uri >>= fun (resp, body) ->
+    Body.to_string body >>= fun s ->
+    Yojson.Safe.from_string s |> function
+    | `Assoc [(_, ret)] ->
+      yojson_to_a ret |> (function | `Ok r -> return r
+                                   | `Error reason -> failwith reason)
+    | _ -> failwith s
+end
+
 module Bittrex = struct
   include Cohttp_async_io
 
