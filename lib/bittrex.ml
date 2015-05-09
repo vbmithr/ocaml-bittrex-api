@@ -344,6 +344,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
+      let ticker pair = get ("markets/" ^ pair ^ "/ticker") [] of_yojson
       let tickers () = get "markets/ticker" [] ts_of_json
     end
 
@@ -359,6 +360,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       ask = t.Raw.ask;
     }
 
+    let ticker pair = Raw.ticker pair >>= fun t -> return @@ of_raw t
     let tickers () = Raw.tickers () >>= fun ts -> return @@ List.map of_raw ts
   end
 end

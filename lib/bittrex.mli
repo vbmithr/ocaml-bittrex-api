@@ -173,6 +173,7 @@ module Cryptsy (H: HTTP_CLIENT) : sig
       ask: float;
     } [@@deriving show,yojson]
 
+    val ticker : string -> t H.t
     val tickers : unit -> t list H.t
   end
 end
