@@ -8,6 +8,13 @@ module type HTTP_CLIENT = sig
   (*   (string -> [< `Error of string | `Ok of 'a ]) -> 'a t *)
 end
 
+module Common : sig
+  type currency = [
+    | `BTC
+    | `LTC
+  ] [@@deriving show]
+end
+
 module Bitfinex (H: HTTP_CLIENT) : sig
   module Ticker : sig
     type t = {
@@ -21,7 +28,7 @@ module Bitfinex (H: HTTP_CLIENT) : sig
       timestamp : float;
     } [@@deriving show,yojson]
 
-    val ticker : string -> t H.t
+    val ticker : Common.currency -> Common.currency -> t H.t
     (** [ticker currency_pair] returns the ticker for the given
         [currency_pair]. *)
   end
@@ -91,7 +98,7 @@ module Bittrex (H: HTTP_CLIENT) : sig
       last: float;
     } [@@deriving show,yojson]
 
-    val ticker : string -> t H.t
+    val ticker : Common.currency -> Common.currency -> t H.t
     (** [ticker currency_pair] returns the ticker for the given
         [currency_pair]. *)
   end
@@ -173,7 +180,7 @@ module Cryptsy (H: HTTP_CLIENT) : sig
       ask: float;
     } [@@deriving show,yojson]
 
-    val ticker : string -> t H.t
+    val ticker : Common.currency -> Common.currency -> t H.t
     val tickers : unit -> t list H.t
   end
 end
@@ -192,6 +199,6 @@ module BTCE (H: HTTP_CLIENT): sig
       updated: int;
     } [@@deriving show,yojson]
 
-    val ticker : string -> t H.t
+    val ticker : Common.currency -> Common.currency -> t H.t
   end
 end

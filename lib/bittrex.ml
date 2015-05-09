@@ -37,6 +37,13 @@ module Stringable = struct
   end
 end
 
+module Common = struct
+  type currency = [
+    | `BTC
+    | `LTC
+  ] [@@deriving show]
+end
+
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
 
@@ -57,7 +64,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker pair = get ("pubticker/" ^ pair) [] of_yojson
+      let string_of_curr = function
+        | `BTC -> "BTC"
+        | `LTC -> "LTC"
+
+      let ticker c1 c2 = get
+          ("pubticker/" ^ string_of_curr c1 ^ string_of_curr c2) [] of_yojson
     end
 
     type t = {
@@ -82,7 +94,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         volume = float_of_string r.Raw.volume;
         timestamp = float_of_string r.Raw.timestamp;
       }
-    let ticker pair = Raw.ticker pair >>= fun t -> return @@ of_raw t
+    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
   end
 
   module OrderBook = struct
@@ -197,7 +209,12 @@ module Bittrex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker pair = get "public/getticker" ["market", pair] of_yojson
+      let string_of_curr = function
+        | `BTC -> "BTC"
+        | `LTC -> "LTC"
+
+      let ticker c1 c2 = get "public/getticker"
+          ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1] of_yojson
     end
     include Raw
   end
@@ -344,7 +361,14 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker pair = get ("markets/" ^ pair ^ "/ticker") [] of_yojson
+      let string_of_curr = function
+        | `BTC -> "btc"
+        | `LTC -> "ltc"
+
+      let ticker c1 c2 = get
+          ("markets/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2 ^ "/ticker")
+          [] of_yojson
+
       let tickers () = get "markets/ticker" [] ts_of_json
     end
 
@@ -360,7 +384,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       ask = t.Raw.ask;
     }
 
-    let ticker pair = Raw.ticker pair >>= fun t -> return @@ of_raw t
+    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
     let tickers () = Raw.tickers () >>= fun ts -> return @@ List.map of_raw ts
   end
 end
@@ -386,7 +410,12 @@ module BTCE (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker pair = get ("ticker/" ^ pair) [] of_yojson
+      let string_of_curr = function
+        | `BTC -> "btc"
+        | `LTC -> "ltc"
+
+      let ticker c1 c2 = get
+          ("ticker/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2) [] of_yojson
     end
     include Raw
   end
