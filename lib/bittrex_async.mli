@@ -17,4 +17,5 @@ module Bitfinex : ASYNC_HTTP_CLIENT
 module Bittrex : ASYNC_HTTP_CLIENT
 module Cryptsy : ASYNC_HTTP_CLIENT
 module BTCE : ASYNC_HTTP_CLIENT
-
+module Poloniex : ASYNC_HTTP_CLIENT
+module Kraken : ASYNC_HTTP_CLIENT

@@ -37,15 +37,10 @@ module Stringable = struct
   end
 end
 
-module Common = struct
-  type currency = [
-    | `BTC
-    | `LTC
-  ] [@@deriving show]
-end
-
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
+
+  type supported_curr = [`BTC | `LTC]
 
   module Ticker = struct
     module Raw = struct
@@ -142,6 +137,8 @@ end
 module Bittrex (H: HTTP_CLIENT) = struct
   open H
 
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
   module Market = struct
     module Raw = struct
       module T = struct
@@ -212,6 +209,7 @@ module Bittrex (H: HTTP_CLIENT) = struct
       let string_of_curr = function
         | `BTC -> "BTC"
         | `LTC -> "LTC"
+        | `DOGE -> "DOGE"
 
       let ticker c1 c2 = get "public/getticker"
           ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1] of_yojson
@@ -256,6 +254,8 @@ end
 
 module Cryptsy (H: HTTP_CLIENT) = struct
   open H
+
+  type supported_curr = [`BTC | `LTC | `DOGE]
 
   module Currency = struct
     module Raw = struct
@@ -364,6 +364,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       let string_of_curr = function
         | `BTC -> "btc"
         | `LTC -> "ltc"
+        | `DOGE -> "doge"
 
       let ticker c1 c2 = get
           ("markets/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2 ^ "/ticker")
@@ -392,6 +393,8 @@ end
 module BTCE (H: HTTP_CLIENT) = struct
   open H
 
+  type supported_curr = [`BTC | `LTC]
+
   module Ticker = struct
     module Raw = struct
       module T = struct
@@ -418,5 +421,121 @@ module BTCE (H: HTTP_CLIENT) = struct
           ("ticker/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2) [] of_yojson
     end
     include Raw
+  end
+end
+
+module Poloniex (H: HTTP_CLIENT) = struct
+  open H
+
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
+  module Ticker = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          last: string;
+          lowestAsk: string;
+          highestBid: string;
+          percentChange: string;
+          baseVolume: string;
+          quoteVolume: string;
+          isFrozen: string;
+          high24hr: string;
+          low24hr: string;
+        } [@@deriving show,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let string_of_curr = function
+        | `BTC -> "BTC"
+        | `LTC -> "LTC"
+        | `DOGE -> "DOGE"
+
+      let ticker c1 c2 = get (string_of_curr c2 ^ "_" ^ string_of_curr c1)
+          ["command", "returnTicker"] of_yojson
+    end
+
+    type t = {
+      last: float;
+      bid: float;
+      ask: float;
+      percent_change: float;
+      base_volume: float;
+      quote_volume: float;
+      is_frozen: bool;
+      high: float;
+      low: float;
+    } [@@deriving show]
+
+    let of_raw t = {
+      last = float_of_string t.Raw.last;
+      bid = float_of_string t.Raw.highestBid;
+      ask = float_of_string t.Raw.lowestAsk;
+      percent_change = float_of_string t.Raw.percentChange;
+      base_volume = float_of_string t.Raw.baseVolume;
+      quote_volume = float_of_string t.Raw.quoteVolume;
+      is_frozen = (match t.Raw.isFrozen with "0" -> false | _ -> true);
+      high = float_of_string t.Raw.high24hr;
+      low = float_of_string t.Raw.low24hr;
+    }
+
+    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+  end
+end
+
+module Kraken (H: HTTP_CLIENT) = struct
+  open H
+
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
+  module Ticker = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          a: string list;
+          b: string list;
+          c: string list;
+          v: string list;
+          p: string list;
+          t: int list;
+          l: string list;
+          h: string list;
+          o: string;
+        } [@@deriving yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let string_of_curr = function
+        | `BTC -> "XXBT"
+        | `LTC -> "XLTC"
+        | `DOGE -> "XXDG"
+
+      let ticker c1 c2 = get "public/Ticker"
+          ["pair", string_of_curr c1 ^ string_of_curr c2] of_yojson
+    end
+
+    type t = {
+      bid: float;
+      ask: float;
+      vol: float;
+      vwap: float;
+      nb_trades: int;
+      low: float;
+      high: float;
+    } [@@deriving show]
+
+    let of_raw t = {
+      bid = float_of_string @@ List.hd t.Raw.b;
+      ask = float_of_string @@ List.hd t.Raw.a;
+      vol = float_of_string @@ List.nth t.Raw.v 1;
+      vwap = float_of_string @@ List.nth t.Raw.p 1;
+      nb_trades = List.nth t.Raw.t 1;
+      low = float_of_string @@ List.nth t.Raw.l 1;
+      high = float_of_string @@ List.nth t.Raw.h 1;
+    }
+
+    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
   end
 end

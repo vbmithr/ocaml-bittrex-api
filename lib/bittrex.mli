@@ -8,14 +8,9 @@ module type HTTP_CLIENT = sig
   (*   (string -> [< `Error of string | `Ok of 'a ]) -> 'a t *)
 end
 
-module Common : sig
-  type currency = [
-    | `BTC
-    | `LTC
-  ] [@@deriving show]
-end
-
 module Bitfinex (H: HTTP_CLIENT) : sig
+  type supported_curr = [`BTC | `LTC]
+
   module Ticker : sig
     type t = {
       mid : float;
@@ -28,7 +23,7 @@ module Bitfinex (H: HTTP_CLIENT) : sig
       timestamp : float;
     } [@@deriving show,yojson]
 
-    val ticker : Common.currency -> Common.currency -> t H.t
+    val ticker : supported_curr -> supported_curr -> t H.t
     (** [ticker currency_pair] returns the ticker for the given
         [currency_pair]. *)
   end
@@ -52,6 +47,8 @@ module Bitfinex (H: HTTP_CLIENT) : sig
 end
 
 module Bittrex (H: HTTP_CLIENT) : sig
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
   module Market : sig
     type t = {
       market_currency: string;
@@ -98,7 +95,7 @@ module Bittrex (H: HTTP_CLIENT) : sig
       last: float;
     } [@@deriving show,yojson]
 
-    val ticker : Common.currency -> Common.currency -> t H.t
+    val ticker : supported_curr -> supported_curr -> t H.t
     (** [ticker currency_pair] returns the ticker for the given
         [currency_pair]. *)
   end
@@ -134,6 +131,8 @@ module Bittrex (H: HTTP_CLIENT) : sig
 end
 
 module Cryptsy (H: HTTP_CLIENT) : sig
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
   module Currency : sig
     type t = {
       id: int;
@@ -180,12 +179,14 @@ module Cryptsy (H: HTTP_CLIENT) : sig
       ask: float;
     } [@@deriving show,yojson]
 
-    val ticker : Common.currency -> Common.currency -> t H.t
+    val ticker : supported_curr -> supported_curr -> t H.t
     val tickers : unit -> t list H.t
   end
 end
 
 module BTCE (H: HTTP_CLIENT): sig
+  type supported_curr = [`BTC | `LTC]
+
   module Ticker : sig
     type t = {
       high: float;
@@ -199,6 +200,44 @@ module BTCE (H: HTTP_CLIENT): sig
       updated: int;
     } [@@deriving show,yojson]
 
-    val ticker : Common.currency -> Common.currency -> t H.t
+    val ticker : supported_curr -> supported_curr -> t H.t
+  end
+end
+
+module Poloniex (H: HTTP_CLIENT) : sig
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
+  module Ticker : sig
+    type t = {
+      last: float;
+      bid: float;
+      ask: float;
+      percent_change: float;
+      base_volume: float;
+      quote_volume: float;
+      is_frozen: bool;
+      high: float;
+      low: float;
+    } [@@deriving show]
+
+    val ticker : supported_curr -> supported_curr -> t H.t
+  end
+end
+
+module Kraken (H: HTTP_CLIENT) : sig
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
+  module Ticker : sig
+    type t = {
+      bid: float;
+      ask: float;
+      vol: float;
+      vwap: float;
+      nb_trades: int;
+      low: float;
+      high: float;
+    } [@@deriving show]
+
+    val ticker : supported_curr -> supported_curr -> t H.t
   end
 end
