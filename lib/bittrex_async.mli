@@ -19,3 +19,4 @@ module Cryptsy : ASYNC_HTTP_CLIENT
 module BTCE : ASYNC_HTTP_CLIENT
 module Poloniex : ASYNC_HTTP_CLIENT
 module Kraken : ASYNC_HTTP_CLIENT
+module Hitbtc : ASYNC_HTTP_CLIENT

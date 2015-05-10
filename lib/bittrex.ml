@@ -539,3 +539,64 @@ module Kraken (H: HTTP_CLIENT) = struct
     let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
   end
 end
+
+module Hitbtc (H: HTTP_CLIENT) = struct
+  open H
+
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
+  module Ticker = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          ask: string;
+          bid: string;
+          last: string;
+          low: string;
+          high: string;
+          o [@key "open"]: string;
+          volume: string;
+          volume_quote: string;
+          timestamp: int;
+        } [@@deriving yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let string_of_curr = function
+        | `BTC -> "BTC"
+        | `LTC -> "LTC"
+        | `DOGE -> "DOGE"
+
+      let ticker c1 c2 =
+        get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/ticker") []
+          of_yojson
+    end
+
+    type t = {
+      ask: float;
+      bid: float;
+      last: float;
+      low: float;
+      high: float;
+      o: float;
+      volume: float;
+      volume_quote: float;
+      timestamp: int;
+    } [@@deriving show]
+
+    let of_raw t = {
+      ask = float_of_string t.Raw.ask;
+      bid = float_of_string t.Raw.bid;
+      last = float_of_string t.Raw.last;
+      low = float_of_string t.Raw.low;
+      high = float_of_string t.Raw.high;
+      o = float_of_string t.Raw.o;
+      volume = float_of_string t.Raw.volume;
+      volume_quote = float_of_string t.Raw.volume_quote;
+      timestamp = t.Raw.timestamp;
+    }
+
+    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+  end
+end

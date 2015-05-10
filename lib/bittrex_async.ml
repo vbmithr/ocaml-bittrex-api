@@ -148,6 +148,23 @@ module Kraken = struct
     | _ -> failwith "internal error"
 end
 
+module Hitbtc = struct
+  include Cohttp_async_io
+
+  let version = "1"
+  let base_uri = "https://api.hitbtc.com/api/" ^ version ^ "/"
+  let mk_uri section = Uri.of_string @@ base_uri ^ section
+
+  let get endpoint params yojson_to_a =
+    let uri = mk_uri endpoint in
+    Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
+    Body.to_string body >>= fun s ->
+    Yojson.Safe.from_string s |>
+    yojson_to_a |>
+    function | `Ok r -> return r
+             | `Error reason -> failwith reason
+end
+
 (* POST / authentified *)
 
 (* let post c endpoint params type_of_string = *)

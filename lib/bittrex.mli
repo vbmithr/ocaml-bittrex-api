@@ -241,3 +241,23 @@ module Kraken (H: HTTP_CLIENT) : sig
     val ticker : supported_curr -> supported_curr -> t H.t
   end
 end
+
+module Hitbtc (H: HTTP_CLIENT) : sig
+  type supported_curr = [`BTC | `LTC | `DOGE]
+
+  module Ticker : sig
+    type t = {
+      ask: float;
+      bid: float;
+      last: float;
+      low: float;
+      high: float;
+      o: float;
+      volume: float;
+      volume_quote: float;
+      timestamp: int;
+    } [@@deriving show]
+
+    val ticker : supported_curr -> supported_curr -> t H.t
+  end
+end
