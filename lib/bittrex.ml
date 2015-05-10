@@ -37,10 +37,42 @@ module Stringable = struct
   end
 end
 
+module type ORDERBOOK = sig
+  type 'a book = {
+    bids: 'a list;
+    asks: 'a list;
+  } [@@deriving show,yojson]
+
+  type order = {
+    price: float;
+    qty: float;
+  } [@@deriving show,yojson,create]
+
+  type t = order book [@@deriving show,yojson]
+end
+
+module OrderBook = struct
+  type 'a book = {
+    bids: 'a list;
+    asks: 'a list;
+  } [@@deriving show,yojson]
+
+  type order = {
+    price: float;
+    qty: float;
+  } [@@deriving show,yojson,create]
+
+  type t = order book [@@deriving show,yojson]
+end
+
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
 
   type supported_curr = [`BTC | `LTC]
+
+  let string_of_curr = function
+    | `BTC -> "BTC"
+    | `LTC -> "LTC"
 
   module Ticker = struct
     module Raw = struct
@@ -59,9 +91,6 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let string_of_curr = function
-        | `BTC -> "BTC"
-        | `LTC -> "LTC"
 
       let ticker c1 c2 = get
           ("pubticker/" ^ string_of_curr c1 ^ string_of_curr c2) [] of_yojson
@@ -93,10 +122,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-    type 'a book = {
-      bids: 'a list;
-      asks: 'a list;
-    } [@@deriving show,yojson]
+    include OrderBook
 
     module Raw = struct
       module T = struct
@@ -106,30 +132,22 @@ module Bitfinex (H: HTTP_CLIENT) = struct
           timestamp: string;
         } [@@deriving show,yojson]
 
-        type t = order book [@@deriving show,yojson]
+        type t = order OrderBook.book [@@deriving show,yojson]
       end
       include T
       include Stringable.Of_jsonable(T)
 
-      let book pair = get ("book/" ^ pair) [] of_yojson
+      let book c1 c2 = get ("book/" ^ string_of_curr c1 ^ string_of_curr c2)
+          [] of_yojson
     end
-
-    type order = {
-      price: float;
-      amount: float;
-      timestamp: float;
-    } [@@deriving show,yojson]
-
-    type t = order book
 
     let of_raw r =
       {
         price = float_of_string r.Raw.price;
-        amount = float_of_string r.Raw.amount;
-        timestamp = float_of_string r.Raw.timestamp;
+        qty = float_of_string r.Raw.amount;
       }
 
-    let book pair = Raw.book pair >>= fun { bids; asks; } ->
+    let book c1 c2 = Raw.book c1 c2 >>= fun { bids; asks; } ->
       return @@ { bids = List.map of_raw bids; asks = List.map of_raw asks }
   end
 end
@@ -138,6 +156,11 @@ module Bittrex (H: HTTP_CLIENT) = struct
   open H
 
   type supported_curr = [`BTC | `LTC | `DOGE]
+
+  let string_of_curr = function
+    | `BTC -> "BTC"
+    | `LTC -> "LTC"
+    | `DOGE -> "DOGE"
 
   module Market = struct
     module Raw = struct
@@ -206,10 +229,6 @@ module Bittrex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let string_of_curr = function
-        | `BTC -> "BTC"
-        | `LTC -> "LTC"
-        | `DOGE -> "DOGE"
 
       let ticker c1 c2 = get "public/getticker"
           ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1] of_yojson
@@ -237,18 +256,31 @@ module Bittrex (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-    type order = {
-      qty [@key "Quantity"] : float;
-      price [@key "Rate"] : float;
-    } [@@deriving show,yojson]
+    module Raw = struct
+      type order = {
+        price [@key "Rate"] : float;
+        qty [@key "Quantity"] : float;
+      } [@@deriving yojson]
 
-    type book = {
-      buy: order list;
-      sell: order list
-    } [@@deriving show,yojson]
+      type book = {
+        buy: order list;
+        sell: order list
+      } [@@deriving yojson]
 
-    let book pair = get "public/getorderbook"
-        ["market", pair; "type", "both"; "depth", "50"] book_of_yojson
+      let book c1 c2 = get "public/getorderbook"
+          ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1;
+           "type", "both"; "depth", "50"] book_of_yojson
+    end
+    include OrderBook
+
+    let of_raw t =
+      { bids = List.map (fun { Raw.price; Raw.qty; } ->
+            OrderBook.create_order ~price ~qty ()) t.Raw.sell;
+        asks = List.map (fun { Raw.price; Raw.qty; } ->
+            OrderBook.create_order ~price ~qty ()) t.Raw.buy;
+      }
+
+    let book c1 c2 = Raw.book c1 c2 >>= fun b -> return @@ of_raw b
   end
 end
 
@@ -489,6 +521,11 @@ module Kraken (H: HTTP_CLIENT) = struct
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
+  let string_of_curr = function
+    | `BTC -> "XXBT"
+    | `LTC -> "XLTC"
+    | `DOGE -> "XXDG"
+
   module Ticker = struct
     module Raw = struct
       module T = struct
@@ -506,11 +543,6 @@ module Kraken (H: HTTP_CLIENT) = struct
       end
       include T
       include Stringable.Of_jsonable(T)
-
-      let string_of_curr = function
-        | `BTC -> "XXBT"
-        | `LTC -> "XLTC"
-        | `DOGE -> "XXDG"
 
       let ticker c1 c2 = get "public/Ticker"
           ["pair", string_of_curr c1 ^ string_of_curr c2] of_yojson
@@ -538,12 +570,47 @@ module Kraken (H: HTTP_CLIENT) = struct
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
   end
+
+  module OrderBook = struct
+    include OrderBook
+
+    let book c1 c2 =
+      let lift_f = function
+        | `Assoc ["asks", `List asks; "bids", `List bids] ->
+          `Ok ({ asks =
+              List.map (function
+                  | `List [`String price; `String qty; `Int ts] ->
+                    create_order
+                      ~price:(float_of_string price)
+                      ~qty:(float_of_string qty) ()
+                  | _ -> invalid_arg "get_orderbook"
+                ) asks;
+
+            bids =
+              List.map (function
+                  | `List [`String price; `String qty; `Int ts] ->
+                    create_order
+                      ~price:(float_of_string price)
+                      ~qty:(float_of_string qty) ()
+                  | _ -> invalid_arg "get_orderbook"
+                ) bids;
+          })
+        | _ -> `Error "lift_f" in
+
+      get "public/Depth"
+        ["pair", string_of_curr c1 ^ string_of_curr c2] lift_f
+  end
 end
 
 module Hitbtc (H: HTTP_CLIENT) = struct
   open H
 
   type supported_curr = [`BTC | `LTC | `DOGE]
+
+  let string_of_curr = function
+    | `BTC -> "BTC"
+    | `LTC -> "LTC"
+    | `DOGE -> "DOGE"
 
   module Ticker = struct
     module Raw = struct
@@ -562,11 +629,6 @@ module Hitbtc (H: HTTP_CLIENT) = struct
       end
       include T
       include Stringable.Of_jsonable(T)
-
-      let string_of_curr = function
-        | `BTC -> "BTC"
-        | `LTC -> "LTC"
-        | `DOGE -> "DOGE"
 
       let ticker c1 c2 =
         get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/ticker") []
@@ -598,5 +660,42 @@ module Hitbtc (H: HTTP_CLIENT) = struct
     }
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+  end
+
+  module OrderBook = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          asks: string list list;
+          bids: string list list;
+        } [@@deriving yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let book c1 c2 =
+        get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/orderbook") []
+          of_yojson
+    end
+
+    include OrderBook
+    let of_raw t = {
+      bids = List.map (function
+          | [price; qty] ->
+            OrderBook.create_order
+              ~price:(float_of_string price)
+              ~qty:(float_of_string qty) ()
+          | _ -> invalid_arg "of_raw"
+        ) t.Raw.bids;
+      asks = List.map (function
+          | [price; qty] ->
+            OrderBook.create_order
+              ~price:(float_of_string price)
+              ~qty:(float_of_string qty) ()
+          | _ -> invalid_arg "of_raw"
+        ) t.Raw.asks;
+    }
+
+    let book c1 c2 = Raw.book c1 c2 >>= fun t -> return @@ of_raw t
   end
 end
