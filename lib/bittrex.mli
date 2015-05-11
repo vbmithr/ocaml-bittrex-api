@@ -191,6 +191,11 @@ module BTCE (H: HTTP_CLIENT): sig
 
     val ticker : supported_curr -> supported_curr -> t H.t
   end
+
+  module OrderBook : sig
+    include ORDERBOOK
+    val book : supported_curr -> supported_curr -> t H.t
+  end
 end
 
 module Poloniex (H: HTTP_CLIENT) : sig
@@ -210,6 +215,11 @@ module Poloniex (H: HTTP_CLIENT) : sig
     } [@@deriving show]
 
     val ticker : supported_curr -> supported_curr -> t H.t
+  end
+
+  module OrderBook : sig
+    include ORDERBOOK
+    val book : supported_curr -> supported_curr -> t H.t
   end
 end
 

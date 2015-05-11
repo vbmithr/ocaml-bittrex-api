@@ -67,7 +67,7 @@ module Poloniex = struct
 
   let base_uri = "https://poloniex.com/public"
 
-  let get endpoint params =
+  let get _ params =
     Client.get Uri.(with_query' (Uri.of_string base_uri) params) >>= fun (resp, body) ->
     Body.to_string body
 end

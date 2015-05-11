@@ -467,6 +467,10 @@ module BTCE (H: HTTP_CLIENT) = struct
 
   type supported_curr = [`BTC | `LTC]
 
+  let string_of_curr = function
+    | `BTC -> "btc"
+    | `LTC -> "ltc"
+
   module Ticker = struct
     module Raw = struct
       module T = struct
@@ -485,30 +489,33 @@ module BTCE (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let string_of_curr = function
-        | `BTC -> "btc"
-        | `LTC -> "ltc"
-
       let ticker c1 c2 = get
           ("ticker/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2) [] of_yojson
     end
     include Raw
   end
+
+  module OrderBook = struct
+    module Raw = struct
+      type t = {
+        asks: float list list;
+        bids: float list list
+      } [@@deriving yojson]
+    end
+
+    include OrderBook
+
+    let book c1 c2 = get ("depth/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2)
+        [] Raw.of_yojson >>= fun t ->
+      return @@ {
+        bids = List.map (function | [price; qty] -> { price; qty } | _ -> invalid_arg "book") t.Raw.bids;
+        asks = List.map (function | [price; qty] -> { price; qty } | _ -> invalid_arg "book") t.Raw.asks;
+      }
+  end
 end
 
 module Poloniex (H: HTTP_CLIENT) = struct
   open H
-
-  let get endpoint params yojson_to_a =
-    get endpoint params >>= fun s ->
-    Yojson.Safe.from_string s |> function
-    | `Assoc l ->
-      (try let t = List.assoc endpoint l in
-         (* Format.printf "%s@." (Yojson.Safe.to_string t); *)
-         yojson_to_a t |> (function | `Ok r -> return r
-                                    | `Error reason -> failwith reason)
-       with Not_found -> failwith "Unknown currency")
-    | _ -> failwith s
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -518,6 +525,18 @@ module Poloniex (H: HTTP_CLIENT) = struct
     | `DOGE -> "DOGE"
 
   module Ticker = struct
+    let get c1 c2 params yojson_to_a =
+      let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
+      get "" params >>= fun s ->
+      Yojson.Safe.from_string s |> function
+      | `Assoc l ->
+        (try let t = List.assoc curr_str l in
+           (* Format.printf "%s@." (Yojson.Safe.to_string t); *)
+           yojson_to_a t |> (function | `Ok r -> return r
+                                      | `Error reason -> failwith reason)
+         with Not_found -> failwith "Unknown currency")
+      | _ -> failwith s
+
     module Raw = struct
       module T = struct
         type t = {
@@ -535,8 +554,7 @@ module Poloniex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker c1 c2 = get (string_of_curr c2 ^ "_" ^ string_of_curr c1)
-          ["command", "returnTicker"] of_yojson
+      let ticker c1 c2 = get c1 c2 ["command", "returnTicker"] of_yojson
     end
 
     type t = {
@@ -564,6 +582,38 @@ module Poloniex (H: HTTP_CLIENT) = struct
     }
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+  end
+
+  module OrderBook = struct
+    include OrderBook
+
+    let book c1 c2 =
+      let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
+      get "" ["command", "returnOrderBook";
+              "currencyPair", curr_str] >>= fun s ->
+      Yojson.Safe.from_string s |> function
+      | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] ->
+        if frz <> "0" then return { asks = []; bids = [] }
+        else
+          return {
+            asks = List.map (
+                function
+                | `List [`String price; `Float qty] ->
+                  { price = float_of_string price; qty }
+                | `List [`String price; `Int qty] ->
+                  { price = float_of_string price; qty = float qty}
+                | json -> invalid_arg @@ Yojson.Safe.to_string json
+              ) asks;
+            bids = List.map (
+                function
+                | `List [`String price; `Float qty] ->
+                  { price = float_of_string price; qty }
+                | `List [`String price; `Int qty] ->
+                  { price = float_of_string price; qty = float qty}
+                | json -> invalid_arg @@ Yojson.Safe.to_string json
+              ) bids;
+          }
+      | json -> invalid_arg @@ Yojson.Safe.to_string json
   end
 end
 

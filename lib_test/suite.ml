@@ -18,13 +18,19 @@ let main () =
   Format.printf "Checking Bittrex@.";
   Bittrex.Ticker.ticker `LTC `BTC >>= fun _ ->
   Bittrex.OrderBook.book `LTC `BTC >>= fun _ ->
+  Format.printf "Checking BTCE@.";
+  BTCE.Ticker.ticker `LTC `BTC >>= fun _ ->
+  BTCE.OrderBook.book `LTC `BTC >>= fun _ ->
+  Format.printf "Checking Poloniex@.";
+  Poloniex.Ticker.ticker `LTC `BTC >>= fun _ ->
+  Poloniex.OrderBook.book `LTC `BTC >>= fun _ ->
   Format.printf "Checking Kraken@.";
   Kraken.Ticker.ticker `BTC `LTC >>= fun _ ->
   Kraken.OrderBook.book `BTC `LTC >>= fun _ ->
   Format.printf "Checking Hitbtc@.";
   Hitbtc.Ticker.ticker `LTC `BTC >>= fun _ ->
   Hitbtc.OrderBook.book `LTC `BTC >>= fun _ ->
-  (* Format.printf "%a@." Hitbtc.OrderBook.pp b; *)
+  (* Format.printf "%a@." Poloniex.Ticker.pp p; *)
   Shutdown.shutdown 0;
   Deferred.unit
 
