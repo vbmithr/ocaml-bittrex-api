@@ -4,7 +4,7 @@ module type HTTP_CLIENT = sig
   val get : string -> (string * string) list -> string t
 end
 
-module type ORDERBOOK = sig
+module OrderBook : sig
   type 'a book = {
     bids: 'a list;
     asks: 'a list;
@@ -39,8 +39,7 @@ module Bitfinex (H: HTTP_CLIENT) : sig
   end
 
   module OrderBook : sig
-    include ORDERBOOK
-    val book : supported_curr -> supported_curr -> t H.t
+    val book : supported_curr -> supported_curr -> OrderBook.t H.t
   end
 end
 
@@ -114,8 +113,7 @@ module Bittrex (H: HTTP_CLIENT) : sig
   end
 
   module OrderBook : sig
-    include ORDERBOOK
-    val book : supported_curr -> supported_curr -> t H.t
+    val book : supported_curr -> supported_curr -> OrderBook.t H.t
   end
 end
 
@@ -193,8 +191,7 @@ module BTCE (H: HTTP_CLIENT): sig
   end
 
   module OrderBook : sig
-    include ORDERBOOK
-    val book : supported_curr -> supported_curr -> t H.t
+    val book : supported_curr -> supported_curr -> OrderBook.t H.t
   end
 end
 
@@ -218,8 +215,7 @@ module Poloniex (H: HTTP_CLIENT) : sig
   end
 
   module OrderBook : sig
-    include ORDERBOOK
-    val book : supported_curr -> supported_curr -> t H.t
+    val book : supported_curr -> supported_curr -> OrderBook.t H.t
   end
 end
 
@@ -241,8 +237,7 @@ module Kraken (H: HTTP_CLIENT) : sig
   end
 
   module OrderBook : sig
-    include ORDERBOOK
-    val book : supported_curr -> supported_curr -> t H.t
+    val book : supported_curr -> supported_curr -> OrderBook.t H.t
   end
 end
 
@@ -266,7 +261,6 @@ module Hitbtc (H: HTTP_CLIENT) : sig
   end
 
   module OrderBook : sig
-    include ORDERBOOK
-    val book : supported_curr -> supported_curr -> t H.t
+    val book : supported_curr -> supported_curr -> OrderBook.t H.t
   end
 end

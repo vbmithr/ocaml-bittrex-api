@@ -33,20 +33,6 @@ module Stringable = struct
   end
 end
 
-module type ORDERBOOK = sig
-  type 'a book = {
-    bids: 'a list;
-    asks: 'a list;
-  } [@@deriving show,yojson]
-
-  type order = {
-    price: float;
-    qty: float;
-  } [@@deriving show,yojson,create]
-
-  type t = order book [@@deriving show,yojson]
-end
-
 module OrderBook = struct
   type 'a book = {
     bids: 'a list;
@@ -124,7 +110,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-    include OrderBook
+    open OrderBook
 
     module Raw = struct
       module T = struct
@@ -288,7 +274,7 @@ module Bittrex (H: HTTP_CLIENT) = struct
           ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1;
            "type", "both"; "depth", "50"] book_of_yojson
     end
-    include OrderBook
+    open OrderBook
 
     let of_raw t =
       { bids = List.map (fun { Raw.price; Raw.qty; } ->
@@ -503,7 +489,7 @@ module BTCE (H: HTTP_CLIENT) = struct
       } [@@deriving yojson]
     end
 
-    include OrderBook
+    open OrderBook
 
     let book c1 c2 = get ("depth/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2)
         [] Raw.of_yojson >>= fun t ->
@@ -585,7 +571,7 @@ module Poloniex (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-    include OrderBook
+    open OrderBook
 
     let book c1 c2 =
       let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
@@ -691,7 +677,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-    include OrderBook
+    open OrderBook
 
     let book c1 c2 =
       let lift_f = function
@@ -804,7 +790,7 @@ module Hitbtc (H: HTTP_CLIENT) = struct
           of_yojson
     end
 
-    include OrderBook
+    open OrderBook
     let of_raw t = {
       bids = List.map (function
           | [price; qty] ->
