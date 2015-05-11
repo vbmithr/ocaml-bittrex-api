@@ -278,9 +278,9 @@ module Bittrex (H: HTTP_CLIENT) = struct
 
     let of_raw t =
       { bids = List.map (fun { Raw.price; Raw.qty; } ->
-            OrderBook.create_order ~price ~qty ()) t.Raw.sell;
-        asks = List.map (fun { Raw.price; Raw.qty; } ->
             OrderBook.create_order ~price ~qty ()) t.Raw.buy;
+        asks = List.map (fun { Raw.price; Raw.qty; } ->
+            OrderBook.create_order ~price ~qty ()) t.Raw.sell;
       }
 
     let book c1 c2 = Raw.book c1 c2 >>= fun b -> return @@ of_raw b
