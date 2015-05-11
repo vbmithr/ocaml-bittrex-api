@@ -1,11 +1,7 @@
 module type HTTP_CLIENT = sig
   include Cohttp.S.IO
 
-  val get : string -> (string * string) list ->
-    (Yojson.Safe.json -> [`Error of string | `Ok of 'a ]) -> 'a t
-
-  (* val post : Credentials.t -> string -> (string * string) list -> *)
-  (*   (string -> [< `Error of string | `Ok of 'a ]) -> 'a t *)
+  val get : string -> (string * string) list -> string t
 end
 
 module type JSONABLE = sig
@@ -68,6 +64,13 @@ end
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
 
+  let get endpoint params yojson_to_a =
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |>
+    yojson_to_a |>
+    function | `Ok r -> return r
+             | `Error reason -> failwith reason
+
   type supported_curr = [`BTC | `LTC]
 
   let string_of_curr = function
@@ -90,7 +93,6 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       end
       include T
       include Stringable.Of_jsonable(T)
-
 
       let ticker c1 c2 = get
           ("pubticker/" ^ string_of_curr c1 ^ string_of_curr c2) [] of_yojson
@@ -154,6 +156,21 @@ end
 
 module Bittrex (H: HTTP_CLIENT) = struct
   open H
+
+  type 'a error_monad = {
+    success: bool;
+    message: string;
+    result: 'a option;
+  } [@@deriving show,yojson]
+
+  let get endpoint params yojson_to_a =
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |>
+    error_monad_of_yojson yojson_to_a |>
+    function | `Ok { success = true; result = Some r } -> return r
+             | `Ok { success = false; message } -> failwith message
+             | `Error reason -> failwith reason
+             | _ -> failwith "internal error"
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -286,6 +303,21 @@ end
 
 module Cryptsy (H: HTTP_CLIENT) = struct
   open H
+
+  type 'a error_monad = {
+    success: bool;
+    error: string [@default ""];
+    data: 'a option;
+  } [@@deriving show,yojson]
+
+  let get endpoint params yojson_to_a =
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |>
+    error_monad_of_yojson yojson_to_a |>
+    function | `Ok { success = true; data = Some r } -> return r
+             | `Ok { success = false; error } -> failwith error
+             | `Error reason -> failwith reason
+             | _ -> failwith "internal error"
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -425,6 +457,14 @@ end
 module BTCE (H: HTTP_CLIENT) = struct
   open H
 
+  let get endpoint params yojson_to_a =
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |> function
+    | `Assoc [(_, ret)] ->
+      yojson_to_a ret |> (function | `Ok r -> return r
+                                   | `Error reason -> failwith reason)
+    | _ -> failwith s
+
   type supported_curr = [`BTC | `LTC]
 
   module Ticker = struct
@@ -459,7 +499,23 @@ end
 module Poloniex (H: HTTP_CLIENT) = struct
   open H
 
+  let get endpoint params yojson_to_a =
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |> function
+    | `Assoc l ->
+      (try let t = List.assoc endpoint l in
+         (* Format.printf "%s@." (Yojson.Safe.to_string t); *)
+         yojson_to_a t |> (function | `Ok r -> return r
+                                    | `Error reason -> failwith reason)
+       with Not_found -> failwith "Unknown currency")
+    | _ -> failwith s
+
   type supported_curr = [`BTC | `LTC | `DOGE]
+
+  let string_of_curr = function
+    | `BTC -> "BTC"
+    | `LTC -> "LTC"
+    | `DOGE -> "DOGE"
 
   module Ticker = struct
     module Raw = struct
@@ -478,11 +534,6 @@ module Poloniex (H: HTTP_CLIENT) = struct
       end
       include T
       include Stringable.Of_jsonable(T)
-
-      let string_of_curr = function
-        | `BTC -> "BTC"
-        | `LTC -> "LTC"
-        | `DOGE -> "DOGE"
 
       let ticker c1 c2 = get (string_of_curr c2 ^ "_" ^ string_of_curr c1)
           ["command", "returnTicker"] of_yojson
@@ -518,6 +569,24 @@ end
 
 module Kraken (H: HTTP_CLIENT) = struct
   open H
+
+  type 'a error_monad = {
+    error: string list;
+    result: 'a option [@default None];
+  } [@@deriving yojson]
+
+  let get endpoint params yojson_to_a =
+    let lift_f = function
+      | `Assoc [_, t] -> yojson_to_a t
+      | _ -> invalid_arg "lift_f"
+    in
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |>
+    error_monad_of_yojson lift_f |> function
+    | `Ok { error = []; result = Some r } -> return r
+    | `Ok { error; result = None } -> failwith (String.concat " " error)
+    | `Error reason -> failwith reason
+    | _ -> failwith "internal error"
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -604,6 +673,13 @@ end
 
 module Hitbtc (H: HTTP_CLIENT) = struct
   open H
+
+  let get endpoint params yojson_to_a =
+    get endpoint params >>= fun s ->
+    Yojson.Safe.from_string s |>
+    yojson_to_a |>
+    function | `Ok r -> return r
+             | `Error reason -> failwith reason
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 

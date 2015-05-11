@@ -1,11 +1,7 @@
 module type HTTP_CLIENT = sig
   include Cohttp.S.IO
 
-  val get : string -> (string * string) list ->
-    (Yojson.Safe.json -> [`Error of string | `Ok of 'a ]) -> 'a t
-
-  (* val post : Credentials.t -> string -> (string * string) list -> *)
-  (*   (string -> [< `Error of string | `Ok of 'a ]) -> 'a t *)
+  val get : string -> (string * string) list -> string t
 end
 
 module type ORDERBOOK = sig
