@@ -18,22 +18,24 @@ module OrderBook : sig
   type t = order book [@@deriving show,yojson]
 end
 
+module Ticker : sig
+  type t = {
+    last: float;
+    bid: float;
+    ask: float;
+    high: float;
+    low: float;
+    volume: float;
+    vwap: float option;
+    timestamp: float option;
+  } [@@deriving show,create]
+end
+
 module Bitfinex (H: HTTP_CLIENT) : sig
-  type supported_curr = [`BTC | `LTC]
+  type supported_curr = [`BTC | `LTC | `USD]
 
   module Ticker : sig
-    type t = {
-      mid : float;
-      bid : float;
-      ask : float;
-      last_price : float;
-      low : float;
-      high : float;
-      volume : float;
-      timestamp : float;
-    } [@@deriving show,yojson]
-
-    val ticker : supported_curr -> supported_curr -> t H.t
+    val ticker : supported_curr -> supported_curr -> Ticker.t H.t
     (** [ticker currency_pair] returns the ticker for the given
         [currency_pair]. *)
   end

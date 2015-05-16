@@ -47,6 +47,19 @@ module OrderBook = struct
   type t = order book [@@deriving show,yojson]
 end
 
+module Ticker = struct
+  type t = {
+    last: float;
+    bid: float;
+    ask: float;
+    high: float;
+    low: float;
+    volume: float;
+    vwap: float option;
+    timestamp: float option;
+  } [@@deriving show,create]
+end
+
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
 
@@ -57,11 +70,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     function | `Ok r -> return r
              | `Error reason -> failwith reason
 
-  type supported_curr = [`BTC | `LTC]
+  type supported_curr = [`BTC | `LTC | `USD]
 
   let string_of_curr = function
     | `BTC -> "BTC"
     | `LTC -> "LTC"
+    | `USD -> "USD"
 
   module Ticker = struct
     module Raw = struct
@@ -84,28 +98,17 @@ module Bitfinex (H: HTTP_CLIENT) = struct
           ("pubticker/" ^ string_of_curr c1 ^ string_of_curr c2) [] of_yojson
     end
 
-    type t = {
-      mid: float;
-      bid: float;
-      ask: float;
-      last_price: float;
-      low: float;
-      high: float;
-      volume: float;
-      timestamp: float;
-    } [@@deriving show,yojson]
-
     let of_raw r =
-      {
-        mid = float_of_string r.Raw.mid;
-        bid = float_of_string r.Raw.bid;
-        ask = float_of_string r.Raw.ask;
-        last_price = float_of_string r.Raw.last_price;
-        low = float_of_string r.Raw.low;
-        high = float_of_string r.Raw.high;
-        volume = float_of_string r.Raw.volume;
-        timestamp = float_of_string r.Raw.timestamp;
-      }
+      let vwap = float_of_string r.Raw.mid in
+      let bid = float_of_string r.Raw.bid in
+      let ask = float_of_string r.Raw.ask in
+      let last = float_of_string r.Raw.last_price in
+      let low = float_of_string r.Raw.low in
+      let high = float_of_string r.Raw.high in
+      let volume = float_of_string r.Raw.volume in
+      let timestamp = float_of_string r.Raw.timestamp in
+      Ticker.create ~bid ~ask ~high ~low ~volume ~vwap ~last ~timestamp ()
+
     let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
   end
 
