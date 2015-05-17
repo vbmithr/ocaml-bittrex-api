@@ -55,8 +55,8 @@ module Ticker = struct
     high: float;
     low: float;
     volume: float;
+    timestamp: float;
     vwap: float option;
-    timestamp: float option;
   } [@@deriving show,create]
 end
 
@@ -481,7 +481,14 @@ module BTCE (H: HTTP_CLIENT) = struct
       let ticker c1 c2 = get
           ("ticker/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2) [] of_yojson
     end
-    include Raw
+    let of_raw t =
+      let open Raw in
+      Ticker.create
+        ~bid:t.buy ~ask:t.sell ~last:t.last ~high:t.high ~low:t.low
+        ~vwap:t.avg ~volume:t.vol ~timestamp:(float t.updated) ()
+
+    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t ->
+      return @@ of_raw t
   end
 
   module OrderBook = struct

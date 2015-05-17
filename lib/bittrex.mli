@@ -26,8 +26,8 @@ module Ticker : sig
     high: float;
     low: float;
     volume: float;
+    timestamp: float;
     vwap: float option;
-    timestamp: float option;
   } [@@deriving show,create]
 end
 
@@ -177,19 +177,7 @@ module BTCE (H: HTTP_CLIENT): sig
   type supported_curr = [`BTC | `LTC]
 
   module Ticker : sig
-    type t = {
-      high: float;
-      low: float;
-      avg: float;
-      vol: float;
-      vol_cur: float;
-      last: float;
-      buy: float;
-      sell: float;
-      updated: int;
-    } [@@deriving show,yojson]
-
-    val ticker : supported_curr -> supported_curr -> t H.t
+    val ticker : supported_curr -> supported_curr -> Ticker.t H.t
   end
 
   module OrderBook : sig
