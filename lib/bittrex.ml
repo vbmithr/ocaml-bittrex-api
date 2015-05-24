@@ -60,8 +60,36 @@ module Ticker = struct
   } [@@deriving show,create]
 end
 
+module Trade = struct
+  type kind = [`Ask | `Bid | `Unknown] [@@deriving show]
+
+  type t = {
+    ts: float;
+    price: float;
+    qty: float;
+    kind: kind;
+  } [@@deriving show,create]
+end
+
+module type EXCHANGE = sig
+  include Cohttp.S.IO
+  type currency
+
+  module Ticker : sig
+    val ticker : currency -> currency -> Ticker.t t
+  end
+
+  module OrderBook : sig
+    val book : currency -> currency -> OrderBook.t t
+  end
+
+  module Trade : sig
+    val trades : ?since:float -> ?limit:int -> currency -> currency -> Trade.t list t
+  end
+end
+
 module Bitfinex (H: HTTP_CLIENT) = struct
-  open H
+  include H
 
   let get endpoint params yojson_to_a =
     get endpoint params >>= fun s ->
@@ -70,7 +98,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     function | `Ok r -> return r
              | `Error reason -> failwith reason
 
-  type supported_curr = [`BTC | `LTC | `USD]
+  type currency = [`BTC | `LTC | `USD]
 
   let string_of_curr = function
     | `BTC -> "BTC"
@@ -140,6 +168,49 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
     let book c1 c2 = Raw.book c1 c2 >>= fun { bids; asks; } ->
       return @@ { bids = List.map of_raw bids; asks = List.map of_raw asks }
+  end
+
+  module Trade = struct
+    module Raw = struct
+      module T = struct
+        type t = {
+          timestamp: int;
+          tid: int;
+          price: string;
+          amount: string;
+          exchange: string;
+          type_ [@key "type"]: string;
+        } [@@deriving yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
+
+      let trades ?since ?limit c1 c2 =
+        get ("trades/" ^ string_of_curr c1 ^ string_of_curr c2)
+          (match since, limit with
+           | None, None -> []
+           | Some v, None -> ["timestamp", v |> int_of_float |> string_of_int]
+           | None, Some v -> ["limit_trades", v]
+           | Some ts, Some l ->
+             ["timestamp", ts |> int_of_float |> string_of_int;
+              "limit_trades", l])
+          ts_of_json
+    end
+
+    let kind_of_raw = function
+      | "sell" -> `Ask
+      | "buy" -> `Bid
+      | _ -> invalid_arg "kind_of_raw"
+
+    let of_raw t = Trade.create
+        ~ts:(float t.Raw.timestamp)
+        ~price:(float_of_string t.Raw.price)
+        ~qty:(float_of_string t.Raw.amount)
+        ~kind:(kind_of_raw t.Raw.type_) ()
+
+    let trades ?since ?limit c1 c2 = Raw.trades c1 c2 >>= fun trades ->
+      return @@ List.map of_raw trades
+
   end
 end
 

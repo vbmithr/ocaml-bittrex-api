@@ -31,19 +31,37 @@ module Ticker : sig
   } [@@deriving show,create]
 end
 
-module Bitfinex (H: HTTP_CLIENT) : sig
-  type supported_curr = [`BTC | `LTC | `USD]
+module Trade : sig
+  type kind = [`Ask | `Bid | `Unknown] [@@deriving show]
+
+  type t = {
+    ts: float;
+    price: float;
+    qty: float;
+    kind: kind;
+  } [@@deriving show,create]
+end
+
+module type EXCHANGE = sig
+  include Cohttp.S.IO
+  type currency
 
   module Ticker : sig
-    val ticker : supported_curr -> supported_curr -> Ticker.t H.t
-    (** [ticker currency_pair] returns the ticker for the given
-        [currency_pair]. *)
+    val ticker : currency -> currency -> Ticker.t t
   end
 
   module OrderBook : sig
-    val book : supported_curr -> supported_curr -> OrderBook.t H.t
+    val book : currency -> currency -> OrderBook.t t
+  end
+
+  module Trade : sig
+    val trades : ?since:float -> ?limit:int -> currency -> currency -> Trade.t list t
   end
 end
+
+module Bitfinex (H: HTTP_CLIENT) :
+  EXCHANGE with type currency = [`BTC | `LTC | `USD]
+            and type 'a t := 'a H.t
 
 module Bittrex (H: HTTP_CLIENT) : sig
   type supported_curr = [`BTC | `LTC | `DOGE]
