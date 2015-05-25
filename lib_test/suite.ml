@@ -22,6 +22,7 @@ let main () =
   Format.printf "Checking BTCE@.";
   BTCE.Ticker.ticker `LTC `BTC >>= fun _ ->
   BTCE.OrderBook.book `LTC `BTC >>= fun _ ->
+  BTCE.Trade.trades `LTC `BTC >>= fun _ ->
   Format.printf "Checking Poloniex@.";
   Poloniex.Ticker.ticker `LTC `BTC >>= fun _ ->
   Poloniex.OrderBook.book `LTC `BTC >>= fun _ ->

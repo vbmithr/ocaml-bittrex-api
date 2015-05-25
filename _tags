@@ -2,14 +2,10 @@ true: debug, bin_annot, safe_string
 <lib>: include
 <src>: include
 
-<{lib,src}/*.*>: package(ppx_deriving.std), \
-		 package(ppx_deriving_yojson), \
-		 package(cohttp.async), \
-                 thread
-
-<lib_test/*.*>: package(ppx_deriving.std), \
-		package(ppx_deriving_yojson), \
-		package(cohttp.async), \
-                thread
+<{lib,src,lib_test}/*.*>: package(containers), \
+                          package(ppx_deriving.std), \
+                          package(ppx_deriving_yojson), \
+                          package(cohttp.async), \
+                          thread
 
 <top/*.*>: package(compiler-libs.toplevel)

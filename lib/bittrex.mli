@@ -43,25 +43,30 @@ module Trade : sig
 end
 
 module type EXCHANGE = sig
-  include Cohttp.S.IO
+  type 'a io
   type currency
 
   module Ticker : sig
-    val ticker : currency -> currency -> Ticker.t t
+    val ticker : currency -> currency -> (Ticker.t, string) CCError.t io
   end
 
   module OrderBook : sig
-    val book : currency -> currency -> OrderBook.t t
+    val book : currency -> currency -> (OrderBook.t, string) CCError.t io
   end
 
   module Trade : sig
-    val trades : ?since:float -> ?limit:int -> currency -> currency -> Trade.t list t
+    val trades : ?since:float -> ?limit:int ->
+      currency -> currency -> (Trade.t list, string) CCError.t io
   end
 end
 
 module Bitfinex (H: HTTP_CLIENT) :
   EXCHANGE with type currency = [`BTC | `LTC | `USD]
-            and type 'a t := 'a H.t
+            and type 'a io := 'a H.t
+
+module BTCE (H: HTTP_CLIENT) :
+  EXCHANGE with type currency = [`BTC | `LTC]
+            and type 'a io = 'a H.t
 
 module Bittrex (H: HTTP_CLIENT) : sig
   type supported_curr = [`BTC | `LTC | `DOGE]
@@ -191,17 +196,6 @@ module Cryptsy (H: HTTP_CLIENT) : sig
   end
 end
 
-module BTCE (H: HTTP_CLIENT): sig
-  type supported_curr = [`BTC | `LTC]
-
-  module Ticker : sig
-    val ticker : supported_curr -> supported_curr -> Ticker.t H.t
-  end
-
-  module OrderBook : sig
-    val book : supported_curr -> supported_curr -> OrderBook.t H.t
-  end
-end
 
 module Poloniex (H: HTTP_CLIENT) : sig
   type supported_curr = [`BTC | `LTC | `DOGE]
