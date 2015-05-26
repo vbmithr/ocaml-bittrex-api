@@ -1,10 +1,9 @@
 version = "0.1"
 description = "Bittrex API library"
 requires = "bittrex.core"
-requires(toploop) = "bittrex.top"
 
 package "core" (
-  requires = "ppx_deriving_yojson.runtime hex cstruct nocrypto"
+  requires = "ppx_deriving_yojson.runtime ppx_deriving.std containers"
   archive(byte) = "bittrex.cma"
   archive(byte, plugin) = "bittrex.cma"
   archive(native) = "bittrex.cmxa"
@@ -19,14 +18,4 @@ package "async" (
   archive(native) = "bittrex_async.cmxa"
   archive(native, plugin) = "bittrex_async.cmxs"
   exists_if = "bittrex_async.cma"
-)
-
-package "top" (
-  description = "Toplevel printers for the Bittrex API"
-  requires = "bittrex.core"
-  archive(byte) = "bittrex_top.cma"
-  archive(byte, plugin) = "bittrex_top.cma"
-  archive(native) = "bittrex_top.cmxa"
-  archive(native, plugin) = "bittrex_top.cmxs"
-  exists_if = "bittrex_top.cma"
 )

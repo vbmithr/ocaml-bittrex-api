@@ -1,8 +1,4 @@
-module type HTTP_CLIENT = sig
-  include Cohttp.S.IO
-
-  val get : string -> (string * string) list -> string t
-end
+open Bittrex_intf
 
 module type JSONABLE = sig
   type t
@@ -24,7 +20,7 @@ module Stringable = struct
                  | `Error s -> None) ts
           in `Ok ts
         end
-      | _ -> `Error "Not a json array."
+      | json -> `Error (Yojson.Safe.to_string json)
   end
 end
 
@@ -32,12 +28,12 @@ module OrderBook = struct
   type 'a book = {
     bids: 'a list;
     asks: 'a list;
-  } [@@deriving show,yojson]
+  } [@@deriving show,create,yojson]
 
   type order = {
     price: float;
     qty: float;
-  } [@@deriving show,yojson,create]
+  } [@@deriving show,create,yojson]
 
   type t = order book [@@deriving show,yojson]
 end
@@ -66,42 +62,29 @@ module Trade = struct
   } [@@deriving show,create]
 end
 
-module type EXCHANGE = sig
-  type 'a io
-  type currency
-
-  module Ticker : sig
-    val ticker : currency -> currency -> (Ticker.t, string) CCError.t io
-  end
-
-  module OrderBook : sig
-    val book : currency -> currency -> (OrderBook.t, string) CCError.t io
-  end
-
-  module Trade : sig
-    val trades : ?since:float -> ?limit:int ->
-      currency -> currency -> (Trade.t list, string) CCError.t io
-  end
-end
+let yojson_of_string s =
+  CCError.guard_str (fun () -> Yojson.Safe.from_string s)
 
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
   type 'a io = 'a H.t
 
+  let name = "bitfinex"
+
   let get endpoint params yojson_to_a =
-    try
-      get endpoint params >>= fun s ->
-      return @@ yojson_to_a @@ Yojson.Safe.from_string s
-    with exn -> return @@ `Error (Printexc.to_string exn)
+    get endpoint params >>|
+    CCError.(flat_map (fun s -> flat_map yojson_to_a (yojson_of_string s)))
 
-  type currency = [`BTC | `LTC | `USD]
+  type pair = [`BTCUSD | `LTCBTC]
+  let pairs = [`BTCUSD; `LTCBTC]
 
-  let string_of_curr = function
-    | `BTC -> "BTC"
-    | `LTC -> "LTC"
-    | `USD -> "USD"
+  let string_of_pair = function
+    | `BTCUSD -> "BTCUSD"
+    | `LTCBTC -> "LTCBTC"
 
   module Ticker = struct
+    include Ticker
+
     module Raw = struct
       module T = struct
         type t = {
@@ -118,8 +101,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker c1 c2 = get
-          ("pubticker/" ^ string_of_curr c1 ^ string_of_curr c2) [] of_yojson
+      let ticker p = get ("pubticker/" ^ string_of_pair p) [] of_yojson
     end
 
     let of_raw r =
@@ -133,11 +115,11 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let timestamp = float_of_string r.Raw.timestamp in
       Ticker.create ~bid ~ask ~high ~low ~volume ~vwap ~last ~timestamp ()
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ CCError.map of_raw t
+    let ticker p = Raw.ticker p >>| CCError.map of_raw
   end
 
   module OrderBook = struct
-    open OrderBook
+    include OrderBook
 
     module Raw = struct
       module T = struct
@@ -152,8 +134,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let book c1 c2 = get ("book/" ^ string_of_curr c1 ^ string_of_curr c2)
-          [] of_yojson
+      let book p = get ("book/" ^ string_of_pair p) [] of_yojson
     end
 
     let of_raw r =
@@ -162,13 +143,18 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         qty = float_of_string r.Raw.amount;
       }
 
-    let book c1 c2 = Raw.book c1 c2 >>= fun t ->
-      return @@
-      CCError.map (fun { bids; asks; } ->
-          { bids = List.map of_raw bids; asks = List.map of_raw asks }) t
+    let of_raw { bids; asks; } =
+      {
+        bids = List.map of_raw bids;
+        asks = List.map of_raw asks;
+      }
+
+    let book p = Raw.book p >>= fun p -> return @@ CCError.map of_raw p
   end
 
   module Trade = struct
+    include Trade
+
     module Raw = struct
       module T = struct
         type t = {
@@ -183,8 +169,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let trades ?since ?limit c1 c2 =
-        get ("trades/" ^ string_of_curr c1 ^ string_of_curr c2)
+      let trades ?since ?limit p =
+        get ("trades/" ^ string_of_pair p)
           (match since, limit with
            | None, None -> []
            | Some v, None -> ["timestamp", v |> int_of_float |> string_of_int]
@@ -198,7 +184,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     let kind_of_raw = function
       | "sell" -> `Ask
       | "buy" -> `Bid
-      | _ -> invalid_arg "kind_of_raw"
+      | _ -> `Unknown
 
     let of_raw t = Trade.create
         ~ts:(float t.Raw.timestamp)
@@ -206,9 +192,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         ~qty:(float_of_string t.Raw.amount)
         ~kind:(kind_of_raw t.Raw.type_) ()
 
-    let trades ?since ?limit c1 c2 = Raw.trades c1 c2 >>= fun trades ->
-      return @@ CCError.map (List.map of_raw) trades
-
+    let trades ?since ?limit p =
+      Raw.trades p >>= fun p -> return @@ CCError.map (List.map of_raw) p
   end
 end
 
@@ -222,13 +207,15 @@ module Bittrex (H: HTTP_CLIENT) = struct
   } [@@deriving show,yojson]
 
   let get endpoint params yojson_to_a =
-    get endpoint params >>= fun s ->
-    Yojson.Safe.from_string s |>
-    error_monad_of_yojson yojson_to_a |>
-    function | `Ok { success = true; result = Some r } -> return r
-             | `Ok { success = false; message } -> failwith message
-             | `Error reason -> failwith reason
-             | _ -> failwith "internal error"
+    let handle_err s =
+      yojson_of_string s |>
+      CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
+      CCError.flat_map
+        (function | { success = true; result = Some r } -> `Ok r
+                  | { success = false; message } -> `Error message
+                  | _ -> `Error "success=true but result=None")
+    in
+    get endpoint params >>| CCError.flat_map handle_err
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -355,7 +342,7 @@ module Bittrex (H: HTTP_CLIENT) = struct
             OrderBook.create_order ~price ~qty ()) t.Raw.sell;
       }
 
-    let book c1 c2 = Raw.book c1 c2 >>= fun b -> return @@ of_raw b
+    let book c1 c2 = Raw.book c1 c2 >>| CCError.map of_raw
   end
 end
 
@@ -369,13 +356,14 @@ module Cryptsy (H: HTTP_CLIENT) = struct
   } [@@deriving show,yojson]
 
   let get endpoint params yojson_to_a =
-    get endpoint params >>= fun s ->
-    Yojson.Safe.from_string s |>
-    error_monad_of_yojson yojson_to_a |>
-    function | `Ok { success = true; data = Some r } -> return r
-             | `Ok { success = false; error } -> failwith error
-             | `Error reason -> failwith reason
-             | _ -> failwith "internal error"
+    let handle_err s =
+      yojson_of_string s |>
+      CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
+      CCError.flat_map
+        (function | { success = true; data = Some r } -> `Ok r
+                  | { success = false; error } -> `Error error
+                  | _ -> `Error "success=true but data=None")
+    in get endpoint params >>| CCError.flat_map handle_err
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -409,7 +397,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       maintenance = int_of_string r.Raw.maintenance;
     }
 
-    let currencies () = Raw.currencies () >>= fun ts -> return @@ List.map of_raw ts
+    let currencies () = Raw.currencies () >>| CCError.map @@ List.map of_raw
   end
 
   module Market = struct
@@ -468,7 +456,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       last_trade = t.Raw.last_trade;
     }
 
-    let markets () = Raw.markets () >>= fun ts -> return @@ List.map of_raw ts
+    let markets () = Raw.markets () >>| CCError.map @@ List.map of_raw
   end
 
   module Ticker = struct
@@ -507,8 +495,8 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       ask = t.Raw.ask;
     }
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
-    let tickers () = Raw.tickers () >>= fun ts -> return @@ List.map of_raw ts
+    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
+    let tickers () = Raw.tickers () >>| CCError.map @@ List.map of_raw
   end
 end
 
@@ -516,21 +504,27 @@ module BTCE (H: HTTP_CLIENT) = struct
   open H
   type 'a io = 'a H.t
 
+  let name = "btce"
+
   let get endpoint params yojson_to_a =
-    get endpoint params >>= fun s ->
-    Yojson.Safe.from_string s |> function
-    | `Assoc [(_, ret)] ->
-      yojson_to_a ret |> (function | `Ok r -> return r
-                                   | `Error reason -> failwith reason)
-    | _ -> failwith s
+    let handle_err s =
+      yojson_of_string s |> CCError.flat_map
+        (function
+          | `Assoc [(_, ret)] -> yojson_to_a ret
+          | _ -> `Error s)
+    in
+    get endpoint params >>| CCError.flat_map handle_err
 
-  type currency = [`BTC | `LTC]
+  type pair = [`BTCUSD | `LTCBTC]
+  let pairs = [`BTCUSD; `LTCBTC]
 
-  let string_of_curr = function
-    | `BTC -> "btc"
-    | `LTC -> "ltc"
+  let string_of_pair = function
+    | `BTCUSD -> "btc_usd"
+    | `LTCBTC -> "ltc_btc"
 
   module Ticker = struct
+    include Ticker
+
     module Raw = struct
       module T = struct
         type t = {
@@ -548,8 +542,7 @@ module BTCE (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker c1 c2 = get
-          ("ticker/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2) [] of_yojson
+      let ticker p = get ("ticker/" ^ string_of_pair p) [] of_yojson
     end
     let of_raw t =
       let open Raw in
@@ -557,29 +550,43 @@ module BTCE (H: HTTP_CLIENT) = struct
         ~bid:t.buy ~ask:t.sell ~last:t.last ~high:t.high ~low:t.low
         ~vwap:t.avg ~volume:t.vol ~timestamp:(float t.updated) ()
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t ->
-      return @@ of_raw t
+    let ticker p = Raw.ticker p >>= fun t -> return @@ CCError.map of_raw t
   end
 
   module OrderBook = struct
+    include OrderBook
+
     module Raw = struct
       type t = {
         asks: float list list;
         bids: float list list
-      } [@@deriving yojson]
+      } [@@deriving create,yojson]
     end
 
     open OrderBook
 
-    let book c1 c2 = get ("depth/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2)
-        [] Raw.of_yojson >>= fun t ->
-      return @@ {
-        bids = List.map (function | [price; qty] -> { price; qty } | _ -> invalid_arg "book") t.Raw.bids;
-        asks = List.map (function | [price; qty] -> { price; qty } | _ -> invalid_arg "book") t.Raw.asks;
-      }
+    let book p = get ("depth/" ^ string_of_pair p) [] Raw.of_yojson >>|
+      CCError.flat_map
+        (fun t ->
+           let f t =
+             create_book
+               ~bids:(List.map (function
+                   | [price; qty] -> { price; qty }
+                   | _ -> raise Exit)
+                   t.Raw.bids)
+               ~asks:(List.map (function
+                   | [price; qty] -> { price; qty }
+                   | _ -> raise Exit)
+                   t.Raw.asks) ()
+           in
+           try `Ok (f t)
+           with Exit -> `Error "book"
+        )
   end
 
   module Trade = struct
+    include Trade
+
     module Raw = struct
       module T = struct
         type t = {
@@ -593,14 +600,13 @@ module BTCE (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let trades c1 c2 = get ("depth/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2)
-          [] ts_of_json
+      let trades p = get ("trades/" ^ string_of_pair p) [] ts_of_json
     end
 
     open Trade
 
-    let trades ?since ?limit c1 c2 = Raw.trades c1 c2 >>= fun trades ->
-      return @@ List.map (fun t ->
+    let trades ?since ?limit p = Raw.trades p >>= fun trades ->
+      return @@ CCError.map (fun trades -> List.map (fun t ->
           create
             ~ts:(float t.Raw.timestamp)
             ~price:t.Raw.price
@@ -608,8 +614,8 @@ module BTCE (H: HTTP_CLIENT) = struct
             ~kind:(match t.Raw.type_ with
                 | "bid" -> `Bid
                 | "ask" -> `Ask
-                | _ -> `Unknown) ()
-        ) trades
+                | _ -> `Unknown) ()) trades)
+        trades
   end
 end
 
@@ -625,16 +631,17 @@ module Poloniex (H: HTTP_CLIENT) = struct
 
   module Ticker = struct
     let get c1 c2 params yojson_to_a =
-      let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
-      get "" params >>= fun s ->
-      Yojson.Safe.from_string s |> function
-      | `Assoc l ->
-        (try let t = List.assoc curr_str l in
-           (* Format.printf "%s@." (Yojson.Safe.to_string t); *)
-           yojson_to_a t |> (function | `Ok r -> return r
-                                      | `Error reason -> failwith reason)
-         with Not_found -> failwith "Unknown currency")
-      | _ -> failwith s
+      let handle_err s =
+        let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
+        yojson_of_string s |> CCError.flat_map
+          (function
+            | `Assoc l ->
+              (try
+                 let t = List.assoc curr_str l in yojson_to_a t
+               with Not_found -> `Error "Unknown currency")
+            | _ -> `Error s)
+      in
+      get "" params >>| CCError.flat_map handle_err
 
     module Raw = struct
       module T = struct
@@ -680,7 +687,7 @@ module Poloniex (H: HTTP_CLIENT) = struct
       low = float_of_string t.Raw.low24hr;
     }
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
 
   module OrderBook = struct
@@ -688,31 +695,36 @@ module Poloniex (H: HTTP_CLIENT) = struct
 
     let book c1 c2 =
       let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
+
+      let handle_err s =
+        yojson_of_string s |> CCError.flat_map
+          (function
+            | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] ->
+              if frz <> "0" then `Ok { asks = []; bids = [] }
+              else
+                let f () =
+                  create_book ~asks:(List.map (
+                      function
+                      | `List [`String price; `Float qty] ->
+                        { price = float_of_string price; qty }
+                      | `List [`String price; `Int qty] ->
+                        { price = float_of_string price; qty = float qty}
+                      | json -> invalid_arg @@ Yojson.Safe.to_string json
+                    ) asks)
+                    ~bids:(List.map (
+                        function
+                        | `List [`String price; `Float qty] ->
+                          { price = float_of_string price; qty }
+                        | `List [`String price; `Int qty] ->
+                          { price = float_of_string price; qty = float qty}
+                        | json -> invalid_arg @@ Yojson.Safe.to_string json
+                      ) bids) ()
+                in
+                (try `Ok (f ()) with Invalid_argument str -> `Error str)
+            | json -> `Error (Yojson.Safe.to_string json))
+      in
       get "" ["command", "returnOrderBook";
-              "currencyPair", curr_str] >>= fun s ->
-      Yojson.Safe.from_string s |> function
-      | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] ->
-        if frz <> "0" then return { asks = []; bids = [] }
-        else
-          return {
-            asks = List.map (
-                function
-                | `List [`String price; `Float qty] ->
-                  { price = float_of_string price; qty }
-                | `List [`String price; `Int qty] ->
-                  { price = float_of_string price; qty = float qty}
-                | json -> invalid_arg @@ Yojson.Safe.to_string json
-              ) asks;
-            bids = List.map (
-                function
-                | `List [`String price; `Float qty] ->
-                  { price = float_of_string price; qty }
-                | `List [`String price; `Int qty] ->
-                  { price = float_of_string price; qty = float qty}
-                | json -> invalid_arg @@ Yojson.Safe.to_string json
-              ) bids;
-          }
-      | json -> invalid_arg @@ Yojson.Safe.to_string json
+              "currencyPair", curr_str] >>| CCError.flat_map handle_err
   end
 end
 
@@ -727,15 +739,18 @@ module Kraken (H: HTTP_CLIENT) = struct
   let get endpoint params yojson_to_a =
     let lift_f = function
       | `Assoc [_, t] -> yojson_to_a t
-      | _ -> invalid_arg "lift_f"
+      | _ -> `Error "lift_f"
     in
-    get endpoint params >>= fun s ->
-    Yojson.Safe.from_string s |>
-    error_monad_of_yojson lift_f |> function
-    | `Ok { error = []; result = Some r } -> return r
-    | `Ok { error; result = None } -> failwith (String.concat " " error)
-    | `Error reason -> failwith reason
-    | _ -> failwith "internal error"
+    let handle_err s =
+      yojson_of_string s |>
+      CCError.flat_map (error_monad_of_yojson lift_f) |>
+      CCError.flat_map
+        (function
+          | { error = []; result = Some r } -> `Ok r
+          | { error; result = None } -> `Error (String.concat " " error)
+          | _ -> `Error "internal error")
+    in
+    get endpoint params >>| CCError.flat_map handle_err
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -786,7 +801,7 @@ module Kraken (H: HTTP_CLIENT) = struct
       high = float_of_string @@ List.nth t.Raw.h 1;
     }
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
 
   module OrderBook = struct
@@ -795,24 +810,22 @@ module Kraken (H: HTTP_CLIENT) = struct
     let book c1 c2 =
       let lift_f = function
         | `Assoc ["asks", `List asks; "bids", `List bids] ->
-          `Ok ({ asks =
-              List.map (function
+          let f () = create_book
+            ~asks:(List.map (function
                   | `List [`String price; `String qty; `Int ts] ->
                     create_order
                       ~price:(float_of_string price)
                       ~qty:(float_of_string qty) ()
-                  | _ -> invalid_arg "get_orderbook"
-                ) asks;
-
-            bids =
-              List.map (function
-                  | `List [`String price; `String qty; `Int ts] ->
-                    create_order
-                      ~price:(float_of_string price)
-                      ~qty:(float_of_string qty) ()
-                  | _ -> invalid_arg "get_orderbook"
-                ) bids;
-          })
+                  | _ -> raise Exit
+                ) asks)
+            ~bids:(List.map (function
+                | `List [`String price; `String qty; `Int ts] ->
+                  create_order
+                    ~price:(float_of_string price)
+                    ~qty:(float_of_string qty) ()
+                | _ -> raise Exit
+              ) bids) () in
+          (try `Ok (f ()) with Exit -> `Error "book")
         | _ -> `Error "lift_f" in
 
       get "public/Depth"
@@ -824,11 +837,9 @@ module Hitbtc (H: HTTP_CLIENT) = struct
   open H
 
   let get endpoint params yojson_to_a =
-    get endpoint params >>= fun s ->
-    Yojson.Safe.from_string s |>
-    yojson_to_a |>
-    function | `Ok r -> return r
-             | `Error reason -> failwith reason
+    let handle_err s =
+      CCError.flat_map yojson_to_a @@ yojson_of_string s in
+    get endpoint params >>| CCError.flat_map handle_err
 
   type supported_curr = [`BTC | `LTC | `DOGE]
 
@@ -884,7 +895,7 @@ module Hitbtc (H: HTTP_CLIENT) = struct
       timestamp = t.Raw.timestamp;
     }
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>= fun t -> return @@ of_raw t
+    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
 
   module OrderBook = struct
@@ -904,23 +915,25 @@ module Hitbtc (H: HTTP_CLIENT) = struct
     end
 
     open OrderBook
-    let of_raw t = {
-      bids = List.map (function
-          | [price; qty] ->
-            OrderBook.create_order
-              ~price:(float_of_string price)
-              ~qty:(float_of_string qty) ()
-          | _ -> invalid_arg "of_raw"
-        ) t.Raw.bids;
-      asks = List.map (function
-          | [price; qty] ->
-            OrderBook.create_order
-              ~price:(float_of_string price)
-              ~qty:(float_of_string qty) ()
-          | _ -> invalid_arg "of_raw"
-        ) t.Raw.asks;
-    }
+    let of_raw t =
+      let f t =
+        create_book
+          ~bids:(List.map (function
+              | [price; qty] ->
+                OrderBook.create_order
+                  ~price:(float_of_string price)
+                  ~qty:(float_of_string qty) ()
+              | _ -> raise Exit
+            ) t.Raw.bids)
+          ~asks:(List.map (function
+              | [price; qty] ->
+                OrderBook.create_order
+                  ~price:(float_of_string price)
+                  ~qty:(float_of_string qty) ()
+              | _ -> raise Exit
+            ) t.Raw.asks) ()
+      in try `Ok (f t) with Exit -> `Error "of_raw"
 
-    let book c1 c2 = Raw.book c1 c2 >>= fun t -> return @@ of_raw t
+    let book c1 c2 = Raw.book c1 c2 >>| CCError.map of_raw
   end
 end

@@ -1,41 +1,40 @@
 open Core.Std
 open Async.Std
 
-module B = Bittrex
-module BA = Bittrex_async
+open Bittrex_async
 
-module BFX = B.Bitfinex(BA.Bitfinex)
-module Bittrex = B.Bittrex(BA.Bittrex)
-module BTCE = B.BTCE(BA.BTCE)
-module Poloniex = B.Poloniex(BA.Poloniex)
-module Kraken = B.Kraken(BA.Kraken)
-module Hitbtc = B.Hitbtc(BA.Hitbtc)
+let log = Log.create ~level:`Info ~output:[(Log.Output.stderr ())]
 
-let main () =
-  Format.printf "Checking BFX@.";
-  BFX.Ticker.ticker `LTC `BTC >>= fun _ ->
-  BFX.OrderBook.book `LTC `BTC >>= fun _ ->
-  BFX.Trade.trades `LTC `BTC >>= fun _ ->
-  Format.printf "Checking Bittrex@.";
-  Bittrex.Ticker.ticker `LTC `BTC >>= fun _ ->
-  Bittrex.OrderBook.book `LTC `BTC >>= fun _ ->
-  Format.printf "Checking BTCE@.";
-  BTCE.Ticker.ticker `LTC `BTC >>= fun _ ->
-  BTCE.OrderBook.book `LTC `BTC >>= fun _ ->
-  BTCE.Trade.trades `LTC `BTC >>= fun _ ->
-  Format.printf "Checking Poloniex@.";
-  Poloniex.Ticker.ticker `LTC `BTC >>= fun _ ->
-  Poloniex.OrderBook.book `LTC `BTC >>= fun _ ->
-  Format.printf "Checking Kraken@.";
-  Kraken.Ticker.ticker `BTC `LTC >>= fun _ ->
-  Kraken.OrderBook.book `BTC `LTC >>= fun _ ->
-  Format.printf "Checking Hitbtc@.";
-  Hitbtc.Ticker.ticker `LTC `BTC >>= fun _ ->
-  Hitbtc.OrderBook.book `LTC `BTC >>= fun _ ->
-  (* Format.printf "%a@." Poloniex.Ticker.pp p; *)
+let ignore_log label f =
+  f () >>| function
+  | `Ok _ -> Log.info log "Checked %s OK" label
+  | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
+
+let module_of_name = function
+  | "bitfinex" -> (module Bitfinex : ASYNC_EXCHANGE)
+  | "btce" -> (module BTCE : ASYNC_EXCHANGE)
+  | _ -> invalid_arg "module_of_name"
+
+let run_tests exchange =
+  let exchange = module_of_name exchange in
+  let module E = (val exchange : ASYNC_EXCHANGE) in
+  let pair = List.hd_exn E.pairs in
+  ignore_log (E.name ^ "::ticker") (fun () -> E.Ticker.ticker pair) >>= fun () ->
+  ignore_log (E.name ^ "::book") (fun () -> E.OrderBook.book pair) >>= fun () ->
+  ignore_log (E.name^ "::trades") (fun () -> E.Trade.trades pair) >>= fun () ->
+  Deferred.unit
+
+let main exchanges =
+  let tests = List.map exchanges ~f:run_tests in
+  Deferred.all_unit tests >>= fun () ->
   Shutdown.shutdown 0;
   Deferred.unit
 
 let _ =
-  don't_wait_for @@ main ();
+  let exchanges = ref [] in
+  let speclist = Arg.align [] in
+  let anon_fun s = exchanges := s :: !exchanges in
+  let usage_msg = "Usage: " ^ Sys.argv.(0) ^ "  exchange exchanges...\nOptions are:" in
+  Arg.parse speclist anon_fun usage_msg;
+  don't_wait_for @@ main !exchanges;
   never_returns @@ Scheduler.go ()
