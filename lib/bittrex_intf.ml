@@ -14,14 +14,14 @@ module type EXCHANGE = sig
 
   module Ticker : sig
     type t = {
-      last: float;
-      bid: float;
-      ask: float;
-      high: float;
-      low: float;
-      volume: float;
-      timestamp: float;
-      vwap: float option;
+      last: int64;
+      bid: int64;
+      ask: int64;
+      high: int64;
+      low: int64;
+      volume: int64;
+      timestamp: int64; (* unix time in us *)
+      vwap: int64 option;
     } [@@deriving show,create]
 
     val ticker : pair -> [`Ok of t | `Error of string] io
@@ -34,8 +34,8 @@ module type EXCHANGE = sig
     } [@@deriving show]
 
     type order = {
-      price: float;
-      qty: float;
+      price: int64;
+      qty: int64;
     } [@@deriving show,create]
 
     type t = order book [@@deriving show]
@@ -47,12 +47,12 @@ module type EXCHANGE = sig
     type kind = [`Ask | `Bid | `Unknown] [@@deriving show]
 
     type t = {
-      ts: float;
-      price: float;
-      qty: float;
+      ts: int64; (* unix time in us *)
+      price: int64;
+      qty: int64;
       kind: kind;
     } [@@deriving show,create]
 
-    val trades : ?since:float -> ?limit:int -> pair -> [`Ok of t list | `Error of string] io
+    val trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of t list | `Error of string] io
   end
 end

@@ -31,8 +31,8 @@ module OrderBook = struct
   } [@@deriving show,create,yojson]
 
   type order = {
-    price: float;
-    qty: float;
+    price: int64;
+    qty: int64;
   } [@@deriving show,create,yojson]
 
   type t = order book [@@deriving show,yojson]
@@ -40,14 +40,14 @@ end
 
 module Ticker = struct
   type t = {
-    last: float;
-    bid: float;
-    ask: float;
-    high: float;
-    low: float;
-    volume: float;
-    timestamp: float;
-    vwap: float option;
+    last: int64;
+    bid: int64;
+    ask: int64;
+    high: int64;
+    low: int64;
+    volume: int64;
+    timestamp: int64;
+    vwap: int64 option;
   } [@@deriving show,create]
 end
 
@@ -55,15 +55,42 @@ module Trade = struct
   type kind = [`Ask | `Bid | `Unknown] [@@deriving show]
 
   type t = {
-    ts: float;
-    price: float;
-    qty: float;
+    ts: int64;
+    price: int64;
+    qty: int64;
     kind: kind;
   } [@@deriving show,create]
 end
 
 let yojson_of_string s =
   CCError.guard_str (fun () -> Yojson.Safe.from_string s)
+
+module Int64 = struct
+  include Int64
+  let ( * ) = mul
+  let ( + ) = add
+end
+
+let satoshis_of_string s =
+  CCString.Split.list_ ~by:"." s |> function
+  | [(a, _, _); (b, _, l)] ->
+    Some Int64.(of_string a * 100_000_000L + of_string b * of_int (CCInt.pow 10 (8 - l)))
+  | _ -> None
+
+let satoshis_of_string_exn s =
+  satoshis_of_string s |> function
+  | Some v -> v
+  | None -> invalid_arg "satoshis_of_string"
+
+let satoshis_of_float v =
+  satoshis_of_string @@ Printf.sprintf "%.8f" v
+
+let satoshis_of_float_exn v =
+  satoshis_of_float v |> function
+  | Some v -> v
+  | None -> invalid_arg "satoshis_of_float"
+
+let gettimeofday_int64 () = Int64.of_float @@ Unix.gettimeofday () *. 1e6
 
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
@@ -105,14 +132,14 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     end
 
     let of_raw r =
-      let vwap = float_of_string r.Raw.mid in
-      let bid = float_of_string r.Raw.bid in
-      let ask = float_of_string r.Raw.ask in
-      let last = float_of_string r.Raw.last_price in
-      let low = float_of_string r.Raw.low in
-      let high = float_of_string r.Raw.high in
-      let volume = float_of_string r.Raw.volume in
-      let timestamp = float_of_string r.Raw.timestamp in
+      let vwap = satoshis_of_string_exn r.Raw.mid in
+      let bid = satoshis_of_string_exn r.Raw.bid in
+      let ask = satoshis_of_string_exn r.Raw.ask in
+      let last = satoshis_of_string_exn r.Raw.last_price in
+      let low = satoshis_of_string_exn r.Raw.low in
+      let high = satoshis_of_string_exn r.Raw.high in
+      let volume = satoshis_of_string_exn r.Raw.volume in
+      let timestamp = Int64.of_float @@ 1e6 *. float_of_string r.Raw.timestamp in
       Ticker.create ~bid ~ask ~high ~low ~volume ~vwap ~last ~timestamp ()
 
     let ticker p = Raw.ticker p >>| CCError.map of_raw
@@ -139,8 +166,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
     let of_raw r =
       {
-        price = float_of_string r.Raw.price;
-        qty = float_of_string r.Raw.amount;
+        price = satoshis_of_string_exn r.Raw.price;
+        qty = satoshis_of_string_exn r.Raw.amount;
       }
 
     let of_raw { bids; asks; } =
@@ -187,9 +214,9 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       | _ -> `Unknown
 
     let of_raw t = Trade.create
-        ~ts:(float t.Raw.timestamp)
-        ~price:(float_of_string t.Raw.price)
-        ~qty:(float_of_string t.Raw.amount)
+        ~ts:Int64.(1_000_000L * of_int t.Raw.timestamp)
+        ~price:(satoshis_of_string_exn t.Raw.price)
+        ~qty:(satoshis_of_string_exn t.Raw.amount)
         ~kind:(kind_of_raw t.Raw.type_) ()
 
     let trades ?since ?limit p =
@@ -336,9 +363,14 @@ module Bittrex (H: HTTP_CLIENT) = struct
     open OrderBook
 
     let of_raw t =
-      { bids = List.map (fun { Raw.price; Raw.qty; } ->
+      let open Raw in
+      { bids = List.map (fun { price; qty; } ->
+            let price = satoshis_of_float_exn price in
+            let qty = satoshis_of_float_exn qty in
             OrderBook.create_order ~price ~qty ()) t.Raw.buy;
-        asks = List.map (fun { Raw.price; Raw.qty; } ->
+        asks = List.map (fun { price; qty; } ->
+            let price = satoshis_of_float_exn price in
+            let qty = satoshis_of_float_exn qty in
             OrderBook.create_order ~price ~qty ()) t.Raw.sell;
       }
 
@@ -547,8 +579,14 @@ module BTCE (H: HTTP_CLIENT) = struct
     let of_raw t =
       let open Raw in
       Ticker.create
-        ~bid:t.buy ~ask:t.sell ~last:t.last ~high:t.high ~low:t.low
-        ~vwap:t.avg ~volume:t.vol ~timestamp:(float t.updated) ()
+        ~bid:(satoshis_of_float_exn t.buy)
+        ~ask:(satoshis_of_float_exn t.sell)
+        ~last:(satoshis_of_float_exn t.last)
+        ~high:(satoshis_of_float_exn t.high)
+        ~low:(satoshis_of_float_exn t.low)
+        ~vwap:(satoshis_of_float_exn t.avg)
+        ~volume:(satoshis_of_float_exn t.vol)
+        ~timestamp:Int64.(1_000_000L * of_int t.updated) ()
 
     let ticker p = Raw.ticker p >>= fun t -> return @@ CCError.map of_raw t
   end
@@ -571,11 +609,15 @@ module BTCE (H: HTTP_CLIENT) = struct
            let f t =
              create_book
                ~bids:(List.map (function
-                   | [price; qty] -> { price; qty }
+                   | [price; qty] ->
+                     { price = satoshis_of_float_exn price;
+                       qty = satoshis_of_float_exn qty }
                    | _ -> raise Exit)
                    t.Raw.bids)
                ~asks:(List.map (function
-                   | [price; qty] -> { price; qty }
+                   | [price; qty] ->
+                     { price = satoshis_of_float_exn price;
+                       qty = satoshis_of_float_exn qty }
                    | _ -> raise Exit)
                    t.Raw.asks) ()
            in
@@ -608,9 +650,9 @@ module BTCE (H: HTTP_CLIENT) = struct
     let trades ?since ?limit p = Raw.trades p >>= fun trades ->
       return @@ CCError.map (fun trades -> List.map (fun t ->
           create
-            ~ts:(float t.Raw.timestamp)
-            ~price:t.Raw.price
-            ~qty:t.Raw.amount
+            ~ts:Int64.(1_000_000L * of_int t.Raw.timestamp)
+            ~price:(satoshis_of_float_exn t.Raw.price)
+            ~qty:(satoshis_of_float_exn t.Raw.amount)
             ~kind:(match t.Raw.type_ with
                 | "bid" -> `Bid
                 | "ask" -> `Ask
@@ -663,29 +705,16 @@ module Poloniex (H: HTTP_CLIENT) = struct
       let ticker c1 c2 = get c1 c2 ["command", "returnTicker"] of_yojson
     end
 
-    type t = {
-      last: float;
-      bid: float;
-      ask: float;
-      percent_change: float;
-      base_volume: float;
-      quote_volume: float;
-      is_frozen: bool;
-      high: float;
-      low: float;
-    } [@@deriving show]
+    include Ticker
 
-    let of_raw t = {
-      last = float_of_string t.Raw.last;
-      bid = float_of_string t.Raw.highestBid;
-      ask = float_of_string t.Raw.lowestAsk;
-      percent_change = float_of_string t.Raw.percentChange;
-      base_volume = float_of_string t.Raw.baseVolume;
-      quote_volume = float_of_string t.Raw.quoteVolume;
-      is_frozen = (match t.Raw.isFrozen with "0" -> false | _ -> true);
-      high = float_of_string t.Raw.high24hr;
-      low = float_of_string t.Raw.low24hr;
-    }
+    let of_raw t = create
+      ~timestamp:(gettimeofday_int64 ())
+      ~last:(satoshis_of_string_exn t.Raw.last)
+      ~bid:(satoshis_of_string_exn t.Raw.highestBid)
+      ~ask:(satoshis_of_string_exn t.Raw.lowestAsk)
+      ~volume:(satoshis_of_string_exn t.Raw.baseVolume)
+      ~high:(satoshis_of_string_exn t.Raw.high24hr)
+      ~low:(satoshis_of_string_exn t.Raw.low24hr) ()
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
@@ -697,28 +726,24 @@ module Poloniex (H: HTTP_CLIENT) = struct
       let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
 
       let handle_err s =
+        let parse =
+          let mapf = function
+            | `List [`String price; `Float qty] ->
+              { price = satoshis_of_string_exn price;
+                qty = satoshis_of_float_exn qty
+              }
+            | `List [`String price; `Int qty] ->
+              { price = satoshis_of_string_exn price;
+                qty = Int64.(10_000_000L * of_int qty)
+              }
+            | json -> invalid_arg @@ Yojson.Safe.to_string json in
+          List.map mapf in
         yojson_of_string s |> CCError.flat_map
           (function
             | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] ->
               if frz <> "0" then `Ok { asks = []; bids = [] }
               else
-                let f () =
-                  create_book ~asks:(List.map (
-                      function
-                      | `List [`String price; `Float qty] ->
-                        { price = float_of_string price; qty }
-                      | `List [`String price; `Int qty] ->
-                        { price = float_of_string price; qty = float qty}
-                      | json -> invalid_arg @@ Yojson.Safe.to_string json
-                    ) asks)
-                    ~bids:(List.map (
-                        function
-                        | `List [`String price; `Float qty] ->
-                          { price = float_of_string price; qty }
-                        | `List [`String price; `Int qty] ->
-                          { price = float_of_string price; qty = float qty}
-                        | json -> invalid_arg @@ Yojson.Safe.to_string json
-                      ) bids) ()
+                let f () = create_book ~asks:(parse asks) ~bids:(parse bids) ()
                 in
                 (try `Ok (f ()) with Invalid_argument str -> `Error str)
             | json -> `Error (Yojson.Safe.to_string json))
@@ -730,6 +755,9 @@ end
 
 module Kraken (H: HTTP_CLIENT) = struct
   open H
+  type 'a io = 'a H.t
+
+  let name = "kraken"
 
   type 'a error_monad = {
     error: string list;
@@ -752,12 +780,12 @@ module Kraken (H: HTTP_CLIENT) = struct
     in
     get endpoint params >>| CCError.flat_map handle_err
 
-  type supported_curr = [`BTC | `LTC | `DOGE]
+  type pair = [`BTCUSD | `BTCLTC]
+  let pairs = [`BTCUSD; `BTCLTC]
 
-  let string_of_curr = function
-    | `BTC -> "XXBT"
-    | `LTC -> "XLTC"
-    | `DOGE -> "XXDG"
+  let string_of_pair = function
+    | `BTCUSD -> "XBTCZUSD"
+    | `BTCLTC -> "XXBTXLTC"
 
   module Ticker = struct
     module Raw = struct
@@ -777,60 +805,61 @@ module Kraken (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker c1 c2 = get "public/Ticker"
-          ["pair", string_of_curr c1 ^ string_of_curr c2] of_yojson
+      let ticker p = get "public/Ticker" ["pair", string_of_pair p] of_yojson
     end
 
-    type t = {
-      bid: float;
-      ask: float;
-      vol: float;
-      vwap: float;
-      nb_trades: int;
-      low: float;
-      high: float;
-    } [@@deriving show]
+    include Ticker
 
-    let of_raw t = {
-      bid = float_of_string @@ List.hd t.Raw.b;
-      ask = float_of_string @@ List.hd t.Raw.a;
-      vol = float_of_string @@ List.nth t.Raw.v 1;
-      vwap = float_of_string @@ List.nth t.Raw.p 1;
-      nb_trades = List.nth t.Raw.t 1;
-      low = float_of_string @@ List.nth t.Raw.l 1;
-      high = float_of_string @@ List.nth t.Raw.h 1;
-    }
+    let of_raw t = create
+        ~timestamp:(gettimeofday_int64 ())
+        ~bid:(satoshis_of_string_exn @@ List.hd t.Raw.b)
+        ~ask:(satoshis_of_string_exn @@ List.hd t.Raw.a)
+        ~volume:(satoshis_of_string_exn @@ List.nth t.Raw.v 1)
+        ~vwap:(satoshis_of_string_exn @@ List.nth t.Raw.p 1)
+        ~low:(satoshis_of_string_exn @@ List.nth t.Raw.l 1)
+        ~high:(satoshis_of_string_exn @@ List.nth t.Raw.h 1) ()
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
+    let ticker p = Raw.ticker p >>| CCError.map of_raw
   end
 
   module OrderBook = struct
     open OrderBook
 
-    let book c1 c2 =
+    let book p =
       let lift_f = function
         | `Assoc ["asks", `List asks; "bids", `List bids] ->
           let f () = create_book
             ~asks:(List.map (function
                   | `List [`String price; `String qty; `Int ts] ->
                     create_order
-                      ~price:(float_of_string price)
-                      ~qty:(float_of_string qty) ()
+                      ~price:(satoshis_of_string_exn price)
+                      ~qty:(satoshis_of_string_exn qty) ()
                   | _ -> raise Exit
                 ) asks)
             ~bids:(List.map (function
                 | `List [`String price; `String qty; `Int ts] ->
                   create_order
-                    ~price:(float_of_string price)
-                    ~qty:(float_of_string qty) ()
+                    ~price:(satoshis_of_string_exn price)
+                    ~qty:(satoshis_of_string_exn qty) ()
                 | _ -> raise Exit
               ) bids) () in
           (try `Ok (f ()) with Exit -> `Error "book")
         | _ -> `Error "lift_f" in
 
-      get "public/Depth"
-        ["pair", string_of_curr c1 ^ string_of_curr c2] lift_f
+      get "public/Depth" ["pair", string_of_pair p] lift_f
   end
+
+  (* module Trade = struct *)
+  (*   open Trade *)
+
+  (*   module Raw = struct *)
+  (*     type t =  *)
+  (*   end *)
+  (*   let trades p = *)
+  (*     let lift_f = function *)
+  (*       |  *)
+  (*     get "public/Trades" ["pair", string_of_pair p] lift_f *)
+  (* end *)
 end
 
 module Hitbtc (H: HTTP_CLIENT) = struct
@@ -871,29 +900,16 @@ module Hitbtc (H: HTTP_CLIENT) = struct
           of_yojson
     end
 
-    type t = {
-      ask: float;
-      bid: float;
-      last: float;
-      low: float;
-      high: float;
-      o: float;
-      volume: float;
-      volume_quote: float;
-      timestamp: int;
-    } [@@deriving show]
+    include Ticker
 
-    let of_raw t = {
-      ask = float_of_string t.Raw.ask;
-      bid = float_of_string t.Raw.bid;
-      last = float_of_string t.Raw.last;
-      low = float_of_string t.Raw.low;
-      high = float_of_string t.Raw.high;
-      o = float_of_string t.Raw.o;
-      volume = float_of_string t.Raw.volume;
-      volume_quote = float_of_string t.Raw.volume_quote;
-      timestamp = t.Raw.timestamp;
-    }
+    let of_raw t = create
+        ~ask:(satoshis_of_string_exn t.Raw.ask)
+        ~bid:(satoshis_of_string_exn t.Raw.bid)
+        ~last:(satoshis_of_string_exn t.Raw.last)
+        ~low:(satoshis_of_string_exn t.Raw.low)
+        ~high:(satoshis_of_string_exn t.Raw.high)
+        ~volume:(satoshis_of_string_exn t.Raw.volume)
+        ~timestamp:Int64.(1000L * of_int t.Raw.timestamp) ()
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
@@ -921,15 +937,15 @@ module Hitbtc (H: HTTP_CLIENT) = struct
           ~bids:(List.map (function
               | [price; qty] ->
                 OrderBook.create_order
-                  ~price:(float_of_string price)
-                  ~qty:(float_of_string qty) ()
+                  ~price:(satoshis_of_string_exn price)
+                  ~qty:(satoshis_of_string_exn qty) ()
               | _ -> raise Exit
             ) t.Raw.bids)
           ~asks:(List.map (function
               | [price; qty] ->
                 OrderBook.create_order
-                  ~price:(float_of_string price)
-                  ~qty:(float_of_string qty) ()
+                  ~price:(satoshis_of_string_exn price)
+                  ~qty:(satoshis_of_string_exn qty) ()
               | _ -> raise Exit
             ) t.Raw.asks) ()
       in try `Ok (f t) with Exit -> `Error "of_raw"
