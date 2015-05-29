@@ -71,24 +71,33 @@ module Int64 = struct
   let ( + ) = add
 end
 
-let satoshis_of_string s =
+let int_of_string_mult mult s =
+  let append_n_zeros n s = s ^ String.make n '0' in
   CCString.Split.list_ ~by:"." s |> function
   | [(a, _, _); (b, _, l)] ->
-    Some Int64.(of_string a * 100_000_000L + of_string b * of_int (CCInt.pow 10 (8 - l)))
+    let b =
+      if l = mult then b
+      else if l < mult then append_n_zeros (mult - l) b
+      else String.sub b 0 mult in
+    Some Int64.(of_string a * of_int (CCInt.pow 10 mult) + of_string b)
   | _ -> None
 
-let satoshis_of_string_exn s =
-  satoshis_of_string s |> function
+let int_of_string_mult_exn mult s =
+  int_of_string_mult mult s |> function
   | Some v -> v
   | None -> invalid_arg "satoshis_of_string"
 
-let satoshis_of_float v =
-  satoshis_of_string @@ Printf.sprintf "%.8f" v
+let int_of_float_mult mult v =
+  int_of_string_mult mult @@ Printf.sprintf "%.*f" mult v
 
-let satoshis_of_float_exn v =
-  satoshis_of_float v |> function
+let int_of_float_mult_exn mult v =
+  int_of_float_mult mult v |> function
   | Some v -> v
   | None -> invalid_arg "satoshis_of_float"
+
+let satoshis_of_string_exn = int_of_string_mult_exn 8
+let satoshis_of_float_exn = int_of_float_mult_exn 8
+let timestamp_of_float_exn = int_of_float_mult_exn 6
 
 let gettimeofday_int64 () = Int64.of_float @@ Unix.gettimeofday () *. 1e6
 
@@ -765,13 +774,13 @@ module Kraken (H: HTTP_CLIENT) = struct
   } [@@deriving yojson]
 
   let get endpoint params yojson_to_a =
-    let lift_f = function
-      | `Assoc [_, t] -> yojson_to_a t
-      | _ -> `Error "lift_f"
-    in
+    (* let lift_f = function *)
+    (*   | `Assoc [_, t] -> yojson_to_a t *)
+    (*   | _ -> `Error "lift_f" *)
+    (* in *)
     let handle_err s =
       yojson_of_string s |>
-      CCError.flat_map (error_monad_of_yojson lift_f) |>
+      CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
       CCError.flat_map
         (function
           | { error = []; result = Some r } -> `Ok r
@@ -805,7 +814,9 @@ module Kraken (H: HTTP_CLIENT) = struct
       include T
       include Stringable.Of_jsonable(T)
 
-      let ticker p = get "public/Ticker" ["pair", string_of_pair p] of_yojson
+      let ticker p = get "public/Ticker" ["pair", string_of_pair p]
+          (function | `Assoc [_, t; _] -> of_yojson t
+                    | _ -> `Error "Kraken API modified")
     end
 
     include Ticker
@@ -846,19 +857,29 @@ module Kraken (H: HTTP_CLIENT) = struct
           (try `Ok (f ()) with Exit -> `Error "book")
         | _ -> `Error "lift_f" in
 
-      get "public/Depth" ["pair", string_of_pair p] lift_f
+      get "public/Depth" ["pair", string_of_pair p]
+        (function | `Assoc [_, t; _] -> lift_f t
+                  | _ -> `Error "Kraken API modified")
   end
 
   (* module Trade = struct *)
   (*   open Trade *)
 
-  (*   module Raw = struct *)
-  (*     type t =  *)
-  (*   end *)
-  (*   let trades p = *)
+  (*   let trades ?since ?limit p = *)
+  (*     let trade_of_json = function *)
+  (*       | `List [`String p; `String q; `Float ts; `String d; `String kind; `String misc] -> *)
+  (*         create *)
+  (*           ~ts:(timestamp_of_float_exn ts) *)
+  (*           ~price:(satoshis_of_string_exn p) *)
+  (*           ~qty:(satoshis_of_string_exn q) *)
+            
+  (*       |'_ -> `Error "trade_of_json" *)
   (*     let lift_f = function *)
-  (*       |  *)
-  (*     get "public/Trades" ["pair", string_of_pair p] lift_f *)
+  (*       | `List elts -> *)
+  (*       | _ -> `Error "lift_f" in *)
+  (*     get "public/Trades" ["pair", string_of_pair p] *)
+  (*       (function | `Assoc [_, t; _] -> lift_f t *)
+  (*                 | _ -> `Error "Kraken API modified") *)
   (* end *)
 end
 
