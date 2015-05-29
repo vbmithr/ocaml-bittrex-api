@@ -122,6 +122,7 @@ module Kraken = struct
         Body.to_string body in
       try_with_convert f
   end
+  include Kraken(H)
 end
 
 module Hitbtc = struct

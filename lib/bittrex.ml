@@ -6,11 +6,14 @@ module type JSONABLE = sig
   val of_yojson : Yojson.Safe.json -> [`Ok of t | `Error of string]
 end
 
+let yojson_of_string s =
+  CCError.guard_str (fun () -> Yojson.Safe.from_string s)
+
 module Stringable = struct
   module Of_jsonable (T: JSONABLE) = struct
     let to_string t = T.to_yojson t |> Yojson.Safe.to_string
     let pp ppf t = Format.fprintf ppf "%s" (to_string t)
-    let of_string s = Yojson.Safe.from_string s |> T.of_yojson
+    let of_string s = CCError.flat_map T.of_yojson @@ yojson_of_string s
     let ts_of_json = function
       | `List ts ->
         begin
@@ -24,47 +27,6 @@ module Stringable = struct
   end
 end
 
-module OrderBook = struct
-  type 'a book = {
-    bids: 'a list;
-    asks: 'a list;
-  } [@@deriving show,create,yojson]
-
-  type order = {
-    price: int64;
-    qty: int64;
-  } [@@deriving show,create,yojson]
-
-  type t = order book [@@deriving show,yojson]
-end
-
-module Ticker = struct
-  type t = {
-    last: int64;
-    bid: int64;
-    ask: int64;
-    high: int64;
-    low: int64;
-    volume: int64;
-    timestamp: int64;
-    vwap: int64 option;
-  } [@@deriving show,create]
-end
-
-module Trade = struct
-  type kind = [`Ask | `Bid | `Unknown] [@@deriving show]
-
-  type t = {
-    ts: int64;
-    price: int64;
-    qty: int64;
-    kind: kind;
-  } [@@deriving show,create]
-end
-
-let yojson_of_string s =
-  CCError.guard_str (fun () -> Yojson.Safe.from_string s)
-
 module Int64 = struct
   include Int64
   let ( * ) = mul
@@ -74,10 +36,12 @@ end
 let int_of_string_mult mult s =
   let append_n_zeros n s = s ^ String.make n '0' in
   CCString.Split.list_ ~by:"." s |> function
-  | [(a, _, _); (b, _, l)] ->
+  | [(_, o, l); (_, o', l')] ->
+    let a = String.sub s o l in
+    let b = String.sub s o' l' in
     let b =
-      if l = mult then b
-      else if l < mult then append_n_zeros (mult - l) b
+      if l' = mult then b
+      else if l' < mult then append_n_zeros (mult - l') b
       else String.sub b 0 mult in
     Some Int64.(of_string a * of_int (CCInt.pow 10 mult) + of_string b)
   | _ -> None
@@ -104,6 +68,9 @@ let gettimeofday_int64 () = Int64.of_float @@ Unix.gettimeofday () *. 1e6
 module Bitfinex (H: HTTP_CLIENT) = struct
   open H
   type 'a io = 'a H.t
+  type ticker = (int64, int64) Mt.ticker_with_vwap
+  type book_entry = int64 Mt.tick
+  type trade = (int64, int64) Mt.tick_with_direction_ts
 
   let name = "bitfinex"
 
@@ -119,118 +86,110 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | `LTCBTC -> "LTCBTC"
 
   module Ticker = struct
-    include Ticker
-
-    module Raw = struct
-      module T = struct
-        type t = {
-          mid: string;
-          bid: string;
-          ask: string;
-          last_price: string;
-          low: string;
-          high: string;
-          volume: string;
-          timestamp: string;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
-      let ticker p = get ("pubticker/" ^ string_of_pair p) [] of_yojson
+    module T = struct
+      type t = {
+        mid: string;
+        bid: string;
+        ask: string;
+        last_price: string;
+        low: string;
+        high: string;
+        volume: string;
+        timestamp: string;
+      } [@@deriving show,yojson]
     end
+    include T
+    include Stringable.Of_jsonable(T)
 
-    let of_raw r =
-      let vwap = satoshis_of_string_exn r.Raw.mid in
-      let bid = satoshis_of_string_exn r.Raw.bid in
-      let ask = satoshis_of_string_exn r.Raw.ask in
-      let last = satoshis_of_string_exn r.Raw.last_price in
-      let low = satoshis_of_string_exn r.Raw.low in
-      let high = satoshis_of_string_exn r.Raw.high in
-      let volume = satoshis_of_string_exn r.Raw.volume in
-      let timestamp = Int64.of_float @@ 1e6 *. float_of_string r.Raw.timestamp in
-      Ticker.create ~bid ~ask ~high ~low ~volume ~vwap ~last ~timestamp ()
-
-    let ticker p = Raw.ticker p >>| CCError.map of_raw
+    let ticker p = get ("pubticker/" ^ string_of_pair p) [] of_yojson
   end
+
+  let ticker p =
+    let open Ticker in
+    let of_raw r =
+      let vwap = satoshis_of_string_exn r.mid in
+      let bid = satoshis_of_string_exn r.bid in
+      let ask = satoshis_of_string_exn r.ask in
+      let last = satoshis_of_string_exn r.last_price in
+      let low = satoshis_of_string_exn r.low in
+      let high = satoshis_of_string_exn r.high in
+      let volume = satoshis_of_string_exn r.volume in
+      let ts = Int64.of_float @@ 1e6 *. float_of_string r.timestamp in
+      new Mt.ticker_with_vwap ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts in
+    ticker p >>| CCError.map of_raw
 
   module OrderBook = struct
-    include OrderBook
+    type 'a book = {
+      bids: 'a list;
+      asks: 'a list;
+    } [@@deriving show,create,yojson]
 
-    module Raw = struct
-      module T = struct
-        type order = {
-          price: string;
-          amount: string;
-          timestamp: string;
-        } [@@deriving show,yojson]
+    module T = struct
+      type order = {
+        price: string;
+        amount: string;
+        timestamp: string;
+      } [@@deriving show,yojson]
 
-        type t = order OrderBook.book [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
-      let book p = get ("book/" ^ string_of_pair p) [] of_yojson
+      type t = order book [@@deriving show,yojson]
     end
+    include T
+    include Stringable.Of_jsonable(T)
 
-    let of_raw r =
-      {
-        price = satoshis_of_string_exn r.Raw.price;
-        qty = satoshis_of_string_exn r.Raw.amount;
-      }
-
-    let of_raw { bids; asks; } =
-      {
-        bids = List.map of_raw bids;
-        asks = List.map of_raw asks;
-      }
-
-    let book p = Raw.book p >>= fun p -> return @@ CCError.map of_raw p
+    let book p = get ("book/" ^ string_of_pair p) [] of_yojson
   end
 
+  let book p =
+    let open OrderBook in
+    let of_raw { bids; asks; } =
+      let of_raw r = new Mt.tick
+        ~p:(satoshis_of_string_exn r.price)
+        ~v:(satoshis_of_string_exn r.amount) in
+      Mt.create_orderbook
+        ~bids:(List.map of_raw bids)
+        ~asks:(List.map of_raw asks) ()
+    in
+    book p >>= fun p -> return @@ CCError.map of_raw p
+
   module Trade = struct
-    include Trade
-
-    module Raw = struct
-      module T = struct
-        type t = {
-          timestamp: int;
-          tid: int;
-          price: string;
-          amount: string;
-          exchange: string;
-          type_ [@key "type"]: string;
-        } [@@deriving yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
-      let trades ?since ?limit p =
-        get ("trades/" ^ string_of_pair p)
-          (match since, limit with
-           | None, None -> []
-           | Some v, None -> ["timestamp", v |> int_of_float |> string_of_int]
-           | None, Some v -> ["limit_trades", v]
-           | Some ts, Some l ->
-             ["timestamp", ts |> int_of_float |> string_of_int;
-              "limit_trades", l])
-          ts_of_json
+    module T = struct
+      type t = {
+        timestamp: int;
+        tid: int;
+        price: string;
+        amount: string;
+        exchange: string;
+        type_ [@key "type"]: string;
+      } [@@deriving yojson]
     end
+    include T
+    include Stringable.Of_jsonable(T)
+
+    let trades ?since ?limit p =
+      get ("trades/" ^ string_of_pair p)
+        ((if CCOpt.is_none since then []
+          else ["timestamp", Int64.to_string @@ CCOpt.get_exn since])
+         @ (if CCOpt.is_none limit then []
+            else ["limit_trades", string_of_int @@ CCOpt.get_exn limit]))
+        ts_of_json
 
     let kind_of_raw = function
       | "sell" -> `Ask
       | "buy" -> `Bid
-      | _ -> `Unknown
+      | _ -> `Unset
 
-    let of_raw t = Trade.create
-        ~ts:Int64.(1_000_000L * of_int t.Raw.timestamp)
-        ~price:(satoshis_of_string_exn t.Raw.price)
-        ~qty:(satoshis_of_string_exn t.Raw.amount)
-        ~kind:(kind_of_raw t.Raw.type_) ()
-
-    let trades ?since ?limit p =
-      Raw.trades p >>= fun p -> return @@ CCError.map (List.map of_raw) p
+    let of_raw t =
+      new Mt.tick_with_direction_ts
+        ~ts:Int64.(1_000_000L * of_int t.timestamp)
+        ~p:(satoshis_of_string_exn t.price)
+        ~v:(satoshis_of_string_exn t.amount)
+        ~d:(kind_of_raw t.type_)
   end
+
+  let trades ?since ?limit p =
+    let open Trade in
+    trades ?since ?limit p >>= fun p ->
+    return @@ CCError.map (List.map of_raw) p
 end
 
 module Bittrex (H: HTTP_CLIENT) = struct
@@ -354,7 +313,6 @@ module Bittrex (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-    module Raw = struct
       type order = {
         price [@key "Rate"] : float;
         qty [@key "Quantity"] : float;
@@ -368,23 +326,20 @@ module Bittrex (H: HTTP_CLIENT) = struct
       let book c1 c2 = get "public/getorderbook"
           ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1;
            "type", "both"; "depth", "50"] book_of_yojson
-    end
-    open OrderBook
 
     let of_raw t =
-      let open Raw in
-      { bids = List.map (fun { price; qty; } ->
-            let price = satoshis_of_float_exn price in
-            let qty = satoshis_of_float_exn qty in
-            OrderBook.create_order ~price ~qty ()) t.Raw.buy;
-        asks = List.map (fun { price; qty; } ->
-            let price = satoshis_of_float_exn price in
-            let qty = satoshis_of_float_exn qty in
-            OrderBook.create_order ~price ~qty ()) t.Raw.sell;
-      }
-
-    let book c1 c2 = Raw.book c1 c2 >>| CCError.map of_raw
+      Mt.create_orderbook
+        ~bids:(List.map (fun { price; qty; } ->
+            let p = satoshis_of_float_exn price in
+            let v = satoshis_of_float_exn qty in
+            new Mt.tick ~p ~v) t.buy)
+        ~asks:(List.map (fun { price; qty; } ->
+            let p = satoshis_of_float_exn price in
+            let v = satoshis_of_float_exn qty in
+            new Mt.tick ~p ~v) t.sell) ()
   end
+
+  let book c1 c2 = OrderBook.(book c1 c2 >>| CCError.map of_raw)
 end
 
 module Cryptsy (H: HTTP_CLIENT) = struct
@@ -544,6 +499,9 @@ end
 module BTCE (H: HTTP_CLIENT) = struct
   open H
   type 'a io = 'a H.t
+  type ticker = (int64, int64) Mt.ticker_with_vwap
+  type book_entry = int64 Mt.tick
+  type trade = (int64, int64) Mt.tick_with_direction_ts
 
   let name = "btce"
 
@@ -564,30 +522,26 @@ module BTCE (H: HTTP_CLIENT) = struct
     | `LTCBTC -> "ltc_btc"
 
   module Ticker = struct
-    include Ticker
-
-    module Raw = struct
-      module T = struct
-        type t = {
-          high: float;
-          low: float;
-          avg: float;
-          vol: float;
-          vol_cur: float;
-          last: float;
-          buy: float;
-          sell: float;
-          updated: int;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
-      let ticker p = get ("ticker/" ^ string_of_pair p) [] of_yojson
+    module T = struct
+      type t = {
+        high: float;
+        low: float;
+        avg: float;
+        vol: float;
+        vol_cur: float;
+        last: float;
+        buy: float;
+        sell: float;
+        updated: int;
+      } [@@deriving show,yojson]
     end
+    include T
+    include Stringable.Of_jsonable(T)
+
+    let ticker p = get ("ticker/" ^ string_of_pair p) [] of_yojson
+
     let of_raw t =
-      let open Raw in
-      Ticker.create
+      new Mt.ticker_with_vwap
         ~bid:(satoshis_of_float_exn t.buy)
         ~ask:(satoshis_of_float_exn t.sell)
         ~last:(satoshis_of_float_exn t.last)
@@ -595,79 +549,73 @@ module BTCE (H: HTTP_CLIENT) = struct
         ~low:(satoshis_of_float_exn t.low)
         ~vwap:(satoshis_of_float_exn t.avg)
         ~volume:(satoshis_of_float_exn t.vol)
-        ~timestamp:Int64.(1_000_000L * of_int t.updated) ()
-
-    let ticker p = Raw.ticker p >>= fun t -> return @@ CCError.map of_raw t
+        ~ts:Int64.(1_000_000L * of_int t.updated)
   end
+  let ticker p =
+    Ticker.(ticker p >>= fun t -> return @@ CCError.map of_raw t)
 
   module OrderBook = struct
-    include OrderBook
-
-    module Raw = struct
-      type t = {
-        asks: float list list;
-        bids: float list list
-      } [@@deriving create,yojson]
-    end
-
-    open OrderBook
-
-    let book p = get ("depth/" ^ string_of_pair p) [] Raw.of_yojson >>|
-      CCError.flat_map
-        (fun t ->
-           let f t =
-             create_book
-               ~bids:(List.map (function
-                   | [price; qty] ->
-                     { price = satoshis_of_float_exn price;
-                       qty = satoshis_of_float_exn qty }
-                   | _ -> raise Exit)
-                   t.Raw.bids)
-               ~asks:(List.map (function
-                   | [price; qty] ->
-                     { price = satoshis_of_float_exn price;
-                       qty = satoshis_of_float_exn qty }
-                   | _ -> raise Exit)
-                   t.Raw.asks) ()
-           in
-           try `Ok (f t)
-           with Exit -> `Error "book"
-        )
+    type t = {
+      asks: float list list;
+      bids: float list list
+    } [@@deriving create,yojson]
   end
+
+  let book p =
+    let open OrderBook in
+    get ("depth/" ^ string_of_pair p) [] of_yojson >>|
+    CCError.flat_map
+      (fun t ->
+         let f t =
+           Mt.create_orderbook
+             ~bids:(List.map (function
+                 | [p; v] ->
+                   new Mt.tick
+                     ~p:(satoshis_of_float_exn p)
+                     ~v:(satoshis_of_float_exn v)
+                 | _ -> raise Exit)
+                 t.bids)
+             ~asks:(List.map (function
+                 | [p; v] ->
+                   new Mt.tick
+                     ~p:(satoshis_of_float_exn p)
+                     ~v:(satoshis_of_float_exn v)
+                 | _ -> raise Exit)
+                 t.asks) ()
+         in
+         try `Ok (f t)
+         with Exit -> `Error "book"
+      )
 
   module Trade = struct
-    include Trade
-
-    module Raw = struct
-      module T = struct
-        type t = {
-          type_ [@key "type"]: string;
-          price: float;
-          amount: float;
-          tid: int;
-          timestamp: int;
-        } [@@deriving yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
-      let trades p = get ("trades/" ^ string_of_pair p) [] ts_of_json
+    module T = struct
+      type t = {
+        type_ [@key "type"]: string;
+        price: float;
+        amount: float;
+        tid: int;
+        timestamp: int;
+      } [@@deriving yojson]
     end
+    include T
+    include Stringable.Of_jsonable(T)
 
-    open Trade
-
-    let trades ?since ?limit p = Raw.trades p >>= fun trades ->
-      return @@ CCError.map (fun trades -> List.map (fun t ->
-          create
-            ~ts:Int64.(1_000_000L * of_int t.Raw.timestamp)
-            ~price:(satoshis_of_float_exn t.Raw.price)
-            ~qty:(satoshis_of_float_exn t.Raw.amount)
-            ~kind:(match t.Raw.type_ with
-                | "bid" -> `Bid
-                | "ask" -> `Ask
-                | _ -> `Unknown) ()) trades)
-        trades
+    let trades p = get ("trades/" ^ string_of_pair p) [] ts_of_json
   end
+
+  let trades ?since ?limit p =
+    let open Trade in
+    trades p >>= fun trades ->
+    return @@ CCError.map (fun trades -> List.map (fun t ->
+        new Mt.tick_with_direction_ts
+          ~ts:Int64.(1_000_000L * of_int t.timestamp)
+          ~p:(satoshis_of_float_exn t.price)
+          ~v:(satoshis_of_float_exn t.amount)
+          ~d:(match t.type_ with
+              | "bid" -> `Bid
+              | "ask" -> `Ask
+              | _ -> `Unset)) trades)
+      trades
 end
 
 module Poloniex (H: HTTP_CLIENT) = struct
@@ -714,45 +662,42 @@ module Poloniex (H: HTTP_CLIENT) = struct
       let ticker c1 c2 = get c1 c2 ["command", "returnTicker"] of_yojson
     end
 
-    include Ticker
-
-    let of_raw t = create
-      ~timestamp:(gettimeofday_int64 ())
+    let of_raw t = new Mt.ticker
+      ~ts:(gettimeofday_int64 ())
       ~last:(satoshis_of_string_exn t.Raw.last)
       ~bid:(satoshis_of_string_exn t.Raw.highestBid)
       ~ask:(satoshis_of_string_exn t.Raw.lowestAsk)
       ~volume:(satoshis_of_string_exn t.Raw.baseVolume)
       ~high:(satoshis_of_string_exn t.Raw.high24hr)
-      ~low:(satoshis_of_string_exn t.Raw.low24hr) ()
+      ~low:(satoshis_of_string_exn t.Raw.low24hr)
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
 
   module OrderBook = struct
-    open OrderBook
-
     let book c1 c2 =
       let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
 
       let handle_err s =
         let parse =
           let mapf = function
-            | `List [`String price; `Float qty] ->
-              { price = satoshis_of_string_exn price;
-                qty = satoshis_of_float_exn qty
-              }
-            | `List [`String price; `Int qty] ->
-              { price = satoshis_of_string_exn price;
-                qty = Int64.(10_000_000L * of_int qty)
-              }
+            | `List [`String p; `Float v] ->
+              new Mt.tick
+                ~p:(satoshis_of_string_exn p)
+                ~v:(satoshis_of_float_exn v)
+            | `List [`String p; `Int v] ->
+              new Mt.tick
+                ~p:(satoshis_of_string_exn p)
+                ~v:Int64.(10_000_000L * of_int v)
             | json -> invalid_arg @@ Yojson.Safe.to_string json in
           List.map mapf in
         yojson_of_string s |> CCError.flat_map
           (function
             | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] ->
-              if frz <> "0" then `Ok { asks = []; bids = [] }
+              if frz <> "0"
+              then `Ok (Mt.create_orderbook ())
               else
-                let f () = create_book ~asks:(parse asks) ~bids:(parse bids) ()
+                let f () = Mt.create_orderbook ~asks:(parse asks) ~bids:(parse bids) ()
                 in
                 (try `Ok (f ()) with Invalid_argument str -> `Error str)
             | json -> `Error (Yojson.Safe.to_string json))
@@ -765,8 +710,16 @@ end
 module Kraken (H: HTTP_CLIENT) = struct
   open H
   type 'a io = 'a H.t
+  type pair = [`BTCUSD | `BTCLTC]
+  type ticker = (int64, int64) Mt.ticker_with_vwap
+  type book_entry = (int64, int64) Mt.tick_with_timestamp
 
+  let pairs = [`BTCUSD; `BTCLTC]
   let name = "kraken"
+
+  let string_of_pair = function
+    | `BTCUSD -> "XXBTZUSD"
+    | `BTCLTC -> "XXBTXLTC"
 
   type 'a error_monad = {
     error: string list;
@@ -774,10 +727,6 @@ module Kraken (H: HTTP_CLIENT) = struct
   } [@@deriving yojson]
 
   let get endpoint params yojson_to_a =
-    (* let lift_f = function *)
-    (*   | `Assoc [_, t] -> yojson_to_a t *)
-    (*   | _ -> `Error "lift_f" *)
-    (* in *)
     let handle_err s =
       yojson_of_string s |>
       CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
@@ -789,98 +738,89 @@ module Kraken (H: HTTP_CLIENT) = struct
     in
     get endpoint params >>| CCError.flat_map handle_err
 
-  type pair = [`BTCUSD | `BTCLTC]
-  let pairs = [`BTCUSD; `BTCLTC]
-
-  let string_of_pair = function
-    | `BTCUSD -> "XBTCZUSD"
-    | `BTCLTC -> "XXBTXLTC"
-
   module Ticker = struct
-    module Raw = struct
-      module T = struct
-        type t = {
-          a: string list;
-          b: string list;
-          c: string list;
-          v: string list;
-          p: string list;
-          t: int list;
-          l: string list;
-          h: string list;
-          o: string;
-        } [@@deriving yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
-      let ticker p = get "public/Ticker" ["pair", string_of_pair p]
-          (function | `Assoc [_, t; _] -> of_yojson t
-                    | _ -> `Error "Kraken API modified")
+    module T = struct
+      type t = {
+        a: string list;
+        b: string list;
+        c: string list;
+        v: string list;
+        p: string list;
+        t: int list;
+        l: string list;
+        h: string list;
+        o: string;
+      } [@@deriving yojson]
     end
+    include T
+    include Stringable.Of_jsonable(T)
 
-    include Ticker
+    let ticker p = get "public/Ticker" ["pair", string_of_pair p]
+        (function | `Assoc [_, t] -> of_yojson t
+                  | _ -> `Error "Kraken API modified")
 
-    let of_raw t = create
-        ~timestamp:(gettimeofday_int64 ())
-        ~bid:(satoshis_of_string_exn @@ List.hd t.Raw.b)
-        ~ask:(satoshis_of_string_exn @@ List.hd t.Raw.a)
-        ~volume:(satoshis_of_string_exn @@ List.nth t.Raw.v 1)
-        ~vwap:(satoshis_of_string_exn @@ List.nth t.Raw.p 1)
-        ~low:(satoshis_of_string_exn @@ List.nth t.Raw.l 1)
-        ~high:(satoshis_of_string_exn @@ List.nth t.Raw.h 1) ()
-
-    let ticker p = Raw.ticker p >>| CCError.map of_raw
+    let of_raw t = new Mt.ticker_with_vwap
+      ~ts:(gettimeofday_int64 ())
+      ~bid:(satoshis_of_string_exn @@ List.hd t.b)
+      ~ask:(satoshis_of_string_exn @@ List.hd t.a)
+      ~last:(satoshis_of_string_exn @@ List.hd t.c)
+      ~volume:(satoshis_of_string_exn @@ List.nth t.v 1)
+      ~vwap:(satoshis_of_string_exn @@ List.nth t.p 1)
+      ~low:(satoshis_of_string_exn @@ List.nth t.l 1)
+      ~high:(satoshis_of_string_exn @@ List.nth t.h 1)
   end
 
-  module OrderBook = struct
-    open OrderBook
+  let ticker p = Ticker.(ticker p >>| CCError.map of_raw)
 
-    let book p =
-      let lift_f = function
-        | `Assoc ["asks", `List asks; "bids", `List bids] ->
-          let f () = create_book
+  let book p =
+    let lift_f = function
+      | `Assoc ["asks", `List asks; "bids", `List bids] ->
+        let f () = Mt.create_orderbook
             ~asks:(List.map (function
-                  | `List [`String price; `String qty; `Int ts] ->
-                    create_order
-                      ~price:(satoshis_of_string_exn price)
-                      ~qty:(satoshis_of_string_exn qty) ()
-                  | _ -> raise Exit
-                ) asks)
+                | `List [`String p; `String v; `Int ts] ->
+                  new Mt.tick_with_timestamp
+                    ~p:(satoshis_of_string_exn p)
+                    ~v:(satoshis_of_string_exn v)
+                    ~ts:Int64.(1_000_000L * of_int ts)
+                | _ -> raise Exit
+              ) asks)
             ~bids:(List.map (function
-                | `List [`String price; `String qty; `Int ts] ->
-                  create_order
-                    ~price:(satoshis_of_string_exn price)
-                    ~qty:(satoshis_of_string_exn qty) ()
+                | `List [`String p; `String v; `Int ts] ->
+                  new Mt.tick_with_timestamp
+                    ~p:(satoshis_of_string_exn p)
+                    ~v:(satoshis_of_string_exn v)
+                    ~ts:Int64.(1_000_000L * of_int ts)
                 | _ -> raise Exit
               ) bids) () in
-          (try `Ok (f ()) with Exit -> `Error "book")
-        | _ -> `Error "lift_f" in
+        (try `Ok (f ()) with Exit -> `Error "book")
+      | _ -> `Error "lift_f" in
 
-      get "public/Depth" ["pair", string_of_pair p]
-        (function | `Assoc [_, t; _] -> lift_f t
-                  | _ -> `Error "Kraken API modified")
-  end
+    get "public/Depth" ["pair", string_of_pair p]
+      (function | `Assoc [_, t] -> lift_f t
+                | _ -> `Error "Kraken API modified")
 
-  (* module Trade = struct *)
-  (*   open Trade *)
+  class trade ~p ~v ~ts ~d ~k ~m =
+    object
+      inherit [int64, int64] Mt.tick_with_direction_ts ~p ~v ~ts ~d
+      method kind : [`Market | `Limit | `Unset] = k
+      method misc : string = m
+    end
 
-  (*   let trades ?since ?limit p = *)
-  (*     let trade_of_json = function *)
-  (*       | `List [`String p; `String q; `Float ts; `String d; `String kind; `String misc] -> *)
-  (*         create *)
-  (*           ~ts:(timestamp_of_float_exn ts) *)
-  (*           ~price:(satoshis_of_string_exn p) *)
-  (*           ~qty:(satoshis_of_string_exn q) *)
-            
-  (*       |'_ -> `Error "trade_of_json" *)
-  (*     let lift_f = function *)
-  (*       | `List elts -> *)
-  (*       | _ -> `Error "lift_f" in *)
-  (*     get "public/Trades" ["pair", string_of_pair p] *)
-  (*       (function | `Assoc [_, t; _] -> lift_f t *)
-  (*                 | _ -> `Error "Kraken API modified") *)
-  (* end *)
+  let trades ?since ?limit p =
+    let trade_of_json = function
+      | `List [`String p; `String v; `Float ts; `String d; `String k; `String m] ->
+        `Ok (new trade
+              ~ts:(timestamp_of_float_exn ts)
+              ~p:(satoshis_of_string_exn p)
+              ~v:(satoshis_of_string_exn v)
+              ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
+              ~k:(match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset)
+              ~m
+             )
+      | _ -> `Error "Kraken trade type modified" in
+    get "public/Trades" ["pair", string_of_pair p]
+      (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
+                | _ -> `Error "Kraken API modified")
 end
 
 module Hitbtc (H: HTTP_CLIENT) = struct
@@ -921,16 +861,14 @@ module Hitbtc (H: HTTP_CLIENT) = struct
           of_yojson
     end
 
-    include Ticker
-
-    let of_raw t = create
+    let of_raw t = new Mt.ticker
         ~ask:(satoshis_of_string_exn t.Raw.ask)
         ~bid:(satoshis_of_string_exn t.Raw.bid)
         ~last:(satoshis_of_string_exn t.Raw.last)
         ~low:(satoshis_of_string_exn t.Raw.low)
         ~high:(satoshis_of_string_exn t.Raw.high)
         ~volume:(satoshis_of_string_exn t.Raw.volume)
-        ~timestamp:Int64.(1000L * of_int t.Raw.timestamp) ()
+        ~ts:Int64.(1000L * of_int t.Raw.timestamp)
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
@@ -951,22 +889,21 @@ module Hitbtc (H: HTTP_CLIENT) = struct
           of_yojson
     end
 
-    open OrderBook
     let of_raw t =
       let f t =
-        create_book
+        Mt.create_orderbook
           ~bids:(List.map (function
-              | [price; qty] ->
-                OrderBook.create_order
-                  ~price:(satoshis_of_string_exn price)
-                  ~qty:(satoshis_of_string_exn qty) ()
+              | [p; v] ->
+                new Mt.tick
+                  ~p:(satoshis_of_string_exn p)
+                  ~v:(satoshis_of_string_exn v)
               | _ -> raise Exit
             ) t.Raw.bids)
           ~asks:(List.map (function
-              | [price; qty] ->
-                OrderBook.create_order
-                  ~price:(satoshis_of_string_exn price)
-                  ~qty:(satoshis_of_string_exn qty) ()
+              | [p; v] ->
+                new Mt.tick
+                  ~p:(satoshis_of_string_exn p)
+                  ~v:(satoshis_of_string_exn v)
               | _ -> raise Exit
             ) t.Raw.asks) ()
       in try `Ok (f t) with Exit -> `Error "of_raw"

@@ -13,15 +13,16 @@ let ignore_log label f =
 let module_of_name = function
   | "bitfinex" -> (module Bitfinex : ASYNC_EXCHANGE)
   | "btce" -> (module BTCE : ASYNC_EXCHANGE)
+  | "kraken" -> (module Kraken : ASYNC_EXCHANGE)
   | _ -> invalid_arg "module_of_name"
 
 let run_tests exchange =
   let exchange = module_of_name exchange in
   let module E = (val exchange : ASYNC_EXCHANGE) in
   let pair = List.hd_exn E.pairs in
-  ignore_log (E.name ^ "::ticker") (fun () -> E.Ticker.ticker pair) >>= fun () ->
-  ignore_log (E.name ^ "::book") (fun () -> E.OrderBook.book pair) >>= fun () ->
-  ignore_log (E.name^ "::trades") (fun () -> E.Trade.trades pair) >>= fun () ->
+  ignore_log (E.name ^ "::ticker") (fun () -> E.ticker pair) >>= fun () ->
+  ignore_log (E.name ^ "::book") (fun () -> E.book pair) >>= fun () ->
+  ignore_log (E.name^ "::trades") (fun () -> E.trades pair) >>= fun () ->
   Deferred.unit
 
 let main exchanges =

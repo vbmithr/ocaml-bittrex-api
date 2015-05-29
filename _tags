@@ -6,6 +6,7 @@ true: debug, bin_annot, safe_string
                           package(ppx_deriving.std), \
                           package(ppx_deriving_yojson), \
                           package(cohttp.async), \
+                          package(mt), \
                           thread
 
 <top/*.*>: package(compiler-libs.toplevel)
