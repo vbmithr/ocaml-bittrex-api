@@ -10,15 +10,17 @@ let ignore_log label f =
   | `Ok _ -> Log.info log "Checked %s OK" label
   | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
 
+module type MINIASYNC = Bittrex_intf.Minimum.S with type 'a io := 'a Deferred.t
+
 let module_of_name = function
-  | "bitfinex" -> (module Bitfinex : ASYNC_EXCHANGE)
-  | "btce" -> (module BTCE : ASYNC_EXCHANGE)
-  | "kraken" -> (module Kraken : ASYNC_EXCHANGE)
+  | "bitfinex" -> (module Bitfinex : MINIASYNC)
+  | "btce" -> (module BTCE : MINIASYNC)
+  (* | "kraken" -> (module Kraken : MINIASYNC) *)
   | _ -> invalid_arg "module_of_name"
 
 let run_tests exchange =
   let exchange = module_of_name exchange in
-  let module E = (val exchange : ASYNC_EXCHANGE) in
+  let module E = (val exchange : MINIASYNC) in
   let pair = List.hd_exn E.pairs in
   ignore_log (E.name ^ "::ticker") (fun () -> E.ticker pair) >>= fun () ->
   ignore_log (E.name ^ "::book") (fun () -> E.book pair) >>= fun () ->

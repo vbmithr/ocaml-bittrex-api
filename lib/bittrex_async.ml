@@ -3,16 +3,6 @@ open Async.Std
 open Cohttp_async
 open Bittrex
 
-open Bittrex_intf
-
-module type ASYNC_EXCHANGE =
-  Bittrex_intf.EXCHANGE with type 'a io = 'a Deferred.t
-
-module type ASYNC_HTTP_CLIENT = HTTP_CLIENT
-  with type 'a t = 'a Deferred.t
-   and type ic = Reader.t
-   and type oc = Writer.t
-
 let try_with_convert f =
   try_with f >>| function
   | Ok r -> `Ok r
