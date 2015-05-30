@@ -10,21 +10,31 @@ let ignore_log label f =
   | `Ok _ -> Log.info log "Checked %s OK" label
   | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
 
-module type MINIASYNC = Bittrex_intf.Minimum.S with type 'a io := 'a Deferred.t
+type pair = [`BTCUSD]
+type ticker = (int64, int64) Mt.ticker_with_vwap
+type book_entry = int64 Mt.tick
+type trade = (int64, int64) Mt.tick_with_direction_ts
 
-let module_of_name = function
-  | "bitfinex" -> (module Bitfinex : MINIASYNC)
-  | "btce" -> (module BTCE : MINIASYNC)
-  (* | "kraken" -> (module Kraken : MINIASYNC) *)
+type exchange =
+  <
+    name : string;
+    ticker : pair -> [`Ok of ticker | `Error of string] Deferred.t;
+    book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] Deferred.t;
+    trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of trade list | `Error of string] Deferred.t
+  >
+
+let obj_of_name = function
+  | "bitfinex" -> (Bitfinex.exchange :> exchange)
+  | "btce" -> (BTCE.exchange :> exchange)
+  | "kraken" -> (Kraken.exchange :> exchange)
   | _ -> invalid_arg "module_of_name"
 
-let run_tests exchange =
-  let exchange = module_of_name exchange in
-  let module E = (val exchange : MINIASYNC) in
-  let pair = List.hd_exn E.pairs in
-  ignore_log (E.name ^ "::ticker") (fun () -> E.ticker pair) >>= fun () ->
-  ignore_log (E.name ^ "::book") (fun () -> E.book pair) >>= fun () ->
-  ignore_log (E.name^ "::trades") (fun () -> E.trades pair) >>= fun () ->
+let run_tests e =
+  let e = obj_of_name e in
+  let pair = `BTCUSD in
+  ignore_log (e#name ^ "::ticker") (fun () -> e#ticker pair) >>= fun () ->
+  ignore_log (e#name ^ "::book") (fun () -> e#book pair) >>= fun () ->
+  ignore_log (e#name^ "::trades") (fun () -> e#trades pair) >>= fun () ->
   Deferred.unit
 
 let main exchanges =

@@ -23,9 +23,18 @@ module type EXCHANGE = sig
 
   val trades : ?since:int64 -> ?limit:int -> pair ->
     [`Ok of trade list | `Error of string] io
+
+  val exchange :
+    <
+      name : string;
+      pairs : pair list;
+      ticker : pair -> [`Ok of ticker | `Error of string] io;
+      book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] io;
+      trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of trade list | `Error of string] io
+    >
 end
 
-module Minimum = struct
+module Bitfinex = struct
   module type S = EXCHANGE
     with type pair = [`BTCUSD | `LTCBTC]
     and type ticker = (int64, int64) Mt.ticker_with_vwap
@@ -33,12 +42,12 @@ module Minimum = struct
     and type trade = (int64, int64) Mt.tick_with_direction_ts
 end
 
-module Bitfinex = struct
-  module type S = Minimum.S
-end
-
 module BTCE = struct
-  module type S = Minimum.S
+  module type S = EXCHANGE
+    with type pair = [`BTCUSD | `LTCBTC]
+    and type ticker = (int64, int64) Mt.ticker_with_vwap
+    and type book_entry = int64 Mt.tick
+    and type trade = (int64, int64) Mt.tick_with_direction_ts
 end
 
 module Kraken = struct

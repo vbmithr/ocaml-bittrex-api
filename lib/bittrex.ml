@@ -190,6 +190,18 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     let open Trade in
     trades ?since ?limit p >>= fun p ->
     return @@ CCError.map (List.map of_raw) p
+
+  class exchange =
+    object
+      method name : string = name
+      method pairs : pair list = pairs
+      method ticker : pair -> (ticker, string) CCError.t H.t = ticker
+      method book : pair -> (book_entry Mt.orderbook, string) CCError.t H.t = book
+      method trades : ?since:int64 -> ?limit:int ->
+        pair -> (trade list, string) CCError.t H.t = trades
+    end
+
+  let exchange = new exchange
 end
 
 module Bittrex (H: HTTP_CLIENT) = struct
@@ -616,6 +628,18 @@ module BTCE (H: HTTP_CLIENT) = struct
               | "ask" -> `Ask
               | _ -> `Unset)) trades)
       trades
+
+  class exchange =
+    object
+      method name : string = name
+      method pairs : pair list = pairs
+      method ticker : pair -> (ticker, string) CCError.t H.t = ticker
+      method book : pair -> (book_entry Mt.orderbook, string) CCError.t H.t = book
+      method trades : ?since:int64 -> ?limit:int ->
+        pair -> (trade list, string) CCError.t H.t = trades
+    end
+
+  let exchange = new exchange
 end
 
 module Poloniex (H: HTTP_CLIENT) = struct
@@ -821,6 +845,18 @@ module Kraken (H: HTTP_CLIENT) = struct
     get "public/Trades" ["pair", string_of_pair p]
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | _ -> `Error "Kraken API modified")
+
+  class exchange =
+    object
+      method name : string = name
+      method pairs : pair list = pairs
+      method ticker : pair -> (ticker, string) CCError.t H.t = ticker
+      method book : pair -> (book_entry Mt.orderbook, string) CCError.t H.t = book
+      method trades : ?since:int64 -> ?limit:int ->
+        pair -> (trade list, string) CCError.t H.t = trades
+    end
+
+  let exchange = new exchange
 end
 
 module Hitbtc (H: HTTP_CLIENT) = struct
