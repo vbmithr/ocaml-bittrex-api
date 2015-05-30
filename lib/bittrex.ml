@@ -86,20 +86,16 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | `LTCBTC -> "LTCBTC"
 
   module Ticker = struct
-    module T = struct
-      type t = {
-        mid: string;
-        bid: string;
-        ask: string;
-        last_price: string;
-        low: string;
-        high: string;
-        volume: string;
-        timestamp: string;
-      } [@@deriving show,yojson]
-    end
-    include T
-    include Stringable.Of_jsonable(T)
+    type t = {
+      mid: string;
+      bid: string;
+      ask: string;
+      last_price: string;
+      low: string;
+      high: string;
+      volume: string;
+      timestamp: string;
+    } [@@deriving yojson]
 
     let ticker p = get ("pubticker/" ^ string_of_pair p) [] of_yojson
   end
@@ -122,19 +118,15 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     type 'a book = {
       bids: 'a list;
       asks: 'a list;
-    } [@@deriving show,create,yojson]
+    } [@@deriving yojson]
 
-    module T = struct
-      type order = {
-        price: string;
-        amount: string;
-        timestamp: string;
-      } [@@deriving show,yojson]
+    type order = {
+      price: string;
+      amount: string;
+      timestamp: string;
+    } [@@deriving yojson]
 
-      type t = order book [@@deriving show,yojson]
-    end
-    include T
-    include Stringable.Of_jsonable(T)
+    type t = order book [@@deriving yojson]
 
     let book p = get ("book/" ^ string_of_pair p) [] of_yojson
   end
@@ -288,16 +280,11 @@ module Bittrex (H: HTTP_CLIENT) = struct
 
   module Ticker = struct
     module Raw = struct
-      module T = struct
-        type t = {
-          bid [@key "Bid"] : float;
-          ask [@key "Ask"] : float;
-          last [@key "Last"] : float;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
-
+      type t = {
+        bid [@key "Bid"] : float;
+        ask [@key "Ask"] : float;
+        last [@key "Last"] : float;
+      } [@@deriving show,yojson]
 
       let ticker c1 c2 = get "public/getticker"
           ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1] of_yojson
@@ -325,19 +312,19 @@ module Bittrex (H: HTTP_CLIENT) = struct
   end
 
   module OrderBook = struct
-      type order = {
-        price [@key "Rate"] : float;
-        qty [@key "Quantity"] : float;
-      } [@@deriving yojson]
+    type order = {
+      price [@key "Rate"] : float;
+      qty [@key "Quantity"] : float;
+    } [@@deriving yojson]
 
-      type book = {
-        buy: order list;
-        sell: order list
-      } [@@deriving yojson]
+    type book = {
+      buy: order list;
+      sell: order list
+    } [@@deriving yojson]
 
-      let book c1 c2 = get "public/getorderbook"
-          ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1;
-           "type", "both"; "depth", "50"] book_of_yojson
+    let book c1 c2 = get "public/getorderbook"
+        ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1;
+         "type", "both"; "depth", "50"] book_of_yojson
 
     let of_raw t =
       Mt.create_orderbook
@@ -534,21 +521,17 @@ module BTCE (H: HTTP_CLIENT) = struct
     | `LTCBTC -> "ltc_btc"
 
   module Ticker = struct
-    module T = struct
-      type t = {
-        high: float;
-        low: float;
-        avg: float;
-        vol: float;
-        vol_cur: float;
-        last: float;
-        buy: float;
-        sell: float;
-        updated: int;
-      } [@@deriving show,yojson]
-    end
-    include T
-    include Stringable.Of_jsonable(T)
+    type t = {
+      high: float;
+      low: float;
+      avg: float;
+      vol: float;
+      vol_cur: float;
+      last: float;
+      buy: float;
+      sell: float;
+      updated: int;
+    } [@@deriving yojson]
 
     let ticker p = get ("ticker/" ^ string_of_pair p) [] of_yojson
 
@@ -570,7 +553,7 @@ module BTCE (H: HTTP_CLIENT) = struct
     type t = {
       asks: float list list;
       bids: float list list
-    } [@@deriving create,yojson]
+    } [@@deriving yojson]
   end
 
   let book p =
@@ -763,21 +746,17 @@ module Kraken (H: HTTP_CLIENT) = struct
     get endpoint params >>| CCError.flat_map handle_err
 
   module Ticker = struct
-    module T = struct
-      type t = {
-        a: string list;
-        b: string list;
-        c: string list;
-        v: string list;
-        p: string list;
-        t: int list;
-        l: string list;
-        h: string list;
-        o: string;
-      } [@@deriving yojson]
-    end
-    include T
-    include Stringable.Of_jsonable(T)
+    type t = {
+      a: string list;
+      b: string list;
+      c: string list;
+      v: string list;
+      p: string list;
+      t: int list;
+      l: string list;
+      h: string list;
+      o: string;
+    } [@@deriving yojson]
 
     let ticker p = get "public/Ticker" ["pair", string_of_pair p]
         (function | `Assoc [_, t] -> of_yojson t
@@ -840,7 +819,7 @@ module Kraken (H: HTTP_CLIENT) = struct
               ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
               ~k:(match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset)
               ~m
-             )
+            )
       | _ -> `Error "Kraken trade type modified" in
     get "public/Trades" ["pair", string_of_pair p]
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
@@ -876,21 +855,17 @@ module Hitbtc (H: HTTP_CLIENT) = struct
 
   module Ticker = struct
     module Raw = struct
-      module T = struct
-        type t = {
-          ask: string;
-          bid: string;
-          last: string;
-          low: string;
-          high: string;
-          o [@key "open"]: string;
-          volume: string;
-          volume_quote: string;
-          timestamp: int;
-        } [@@deriving yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
+      type t = {
+        ask: string;
+        bid: string;
+        last: string;
+        low: string;
+        high: string;
+        o [@key "open"]: string;
+        volume: string;
+        volume_quote: string;
+        timestamp: int;
+      } [@@deriving yojson]
 
       let ticker c1 c2 =
         get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/ticker") []
@@ -898,27 +873,24 @@ module Hitbtc (H: HTTP_CLIENT) = struct
     end
 
     let of_raw t = new Mt.ticker
-        ~ask:(satoshis_of_string_exn t.Raw.ask)
-        ~bid:(satoshis_of_string_exn t.Raw.bid)
-        ~last:(satoshis_of_string_exn t.Raw.last)
-        ~low:(satoshis_of_string_exn t.Raw.low)
-        ~high:(satoshis_of_string_exn t.Raw.high)
-        ~volume:(satoshis_of_string_exn t.Raw.volume)
-        ~ts:Int64.(1000L * of_int t.Raw.timestamp)
+      ~ask:(satoshis_of_string_exn t.Raw.ask)
+      ~bid:(satoshis_of_string_exn t.Raw.bid)
+      ~last:(satoshis_of_string_exn t.Raw.last)
+      ~low:(satoshis_of_string_exn t.Raw.low)
+      ~high:(satoshis_of_string_exn t.Raw.high)
+      ~volume:(satoshis_of_string_exn t.Raw.volume)
+      ~ts:Int64.(1000L * of_int t.Raw.timestamp)
 
     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
   end
 
   module OrderBook = struct
     module Raw = struct
-      module T = struct
-        type t = {
-          asks: string list list;
-          bids: string list list;
-        } [@@deriving yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
+
+      type t = {
+        asks: string list list;
+        bids: string list list;
+      } [@@deriving yojson]
 
       let book c1 c2 =
         get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/orderbook") []
