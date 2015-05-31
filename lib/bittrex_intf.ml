@@ -70,5 +70,5 @@ module Kraken = struct
      and type book_entry = (int64, int64) Mt.tick_with_timestamp
      and type trade = < d : [ `Ask | `Bid | `Unset ];
                         kind : [ `Limit | `Market | `Unset ]; misc : string;
-                        p : int64; ts : int64; v : int64 >
+                        p : int64; ts : int64; ns : int64; v : int64 >
 end

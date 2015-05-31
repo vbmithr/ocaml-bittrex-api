@@ -779,9 +779,9 @@ module Kraken (H: HTTP_CLIENT) = struct
       (function | `Assoc [_, t] -> lift_f t
                 | _ -> `Error "Kraken API modified")
 
-  class trade ~p ~v ~ts ~d ~k ~m =
+  class trade ~p ~v ~ts ~ns ~d ~k ~m =
     object
-      inherit [int64, int64] Mt.tick_with_direction_ts ~p ~v ~ts ~d
+      inherit [int64, int64] Mt.tick_with_d_ts_ns ~p ~v ~ts ~ns ~d
       method kind : [`Market | `Limit | `Unset] = k
       method misc : string = m
     end
@@ -789,8 +789,13 @@ module Kraken (H: HTTP_CLIENT) = struct
   let trades ?since ?limit p =
     let trade_of_json = function
       | `List [`String p; `String v; `Float ts; `String d; `String k; `String m] ->
+        let ns =
+          let s = Printf.sprintf "%.3f" ts in
+          Int64.of_string @@
+          String.(sub s (index s '.' + 1) 3) ^ "000000" in
         `Ok (new trade
-              ~ts:(timestamp_of_float_exn ts)
+              ~ts:Int64.(of_int @@ truncate ts)
+              ~ns
               ~p:(satoshis_of_string_exn p)
               ~v:(satoshis_of_string_exn v)
               ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
