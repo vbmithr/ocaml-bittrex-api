@@ -70,7 +70,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type 'a io = 'a H.t
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = int64 Mt.tick
-  type trade = (int64, int64) Mt.tick_with_direction_ts
+  type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
   let name = "bitfinex"
 
@@ -110,7 +110,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let low = satoshis_of_string_exn r.low in
       let high = satoshis_of_string_exn r.high in
       let volume = satoshis_of_string_exn r.volume in
-      let ts = Int64.of_float @@ 1e6 *. float_of_string r.timestamp in
+      let ts = Int64.of_string String.(sub r.timestamp 0 10 ^ sub r.timestamp 11 6) in
       new Mt.ticker_with_vwap ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts in
     ticker p >>| CCError.map of_raw
 
@@ -171,8 +171,9 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       | _ -> `Unset
 
     let of_raw t =
-      new Mt.tick_with_direction_ts
-        ~ts:Int64.(1_000_000L * of_int t.timestamp)
+      new Mt.tick_with_d_ts_ns
+        ~ts:(Int64.of_int t.timestamp)
+        ~ns:(Int64.of_int t.tid)
         ~p:(satoshis_of_string_exn t.price)
         ~v:(satoshis_of_string_exn t.amount)
         ~d:(kind_of_raw t.type_)
@@ -500,7 +501,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   type 'a io = 'a H.t
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = int64 Mt.tick
-  type trade = (int64, int64) Mt.tick_with_direction_ts
+  type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
   let name = "btce"
 
@@ -602,8 +603,9 @@ module BTCE (H: HTTP_CLIENT) = struct
     let open Trade in
     trades p >>= fun trades ->
     return @@ CCError.map (fun trades -> List.map (fun t ->
-        new Mt.tick_with_direction_ts
-          ~ts:Int64.(1_000_000L * of_int t.timestamp)
+        new Mt.tick_with_d_ts_ns
+          ~ts:Int64.(of_int t.timestamp)
+          ~ns:Int64.(of_int t.tid)
           ~p:(satoshis_of_float_exn t.price)
           ~v:(satoshis_of_float_exn t.amount)
           ~d:(match t.type_ with

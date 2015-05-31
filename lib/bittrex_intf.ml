@@ -39,7 +39,7 @@ module Bitfinex = struct
     with type pair = [`BTCUSD | `LTCBTC]
     and type ticker = (int64, int64) Mt.ticker_with_vwap
     and type book_entry = int64 Mt.tick
-    and type trade = (int64, int64) Mt.tick_with_direction_ts
+    and type trade = (int64, int64) Mt.tick_with_d_ts_ns
 end
 
 module BTCE = struct
@@ -47,7 +47,7 @@ module BTCE = struct
     with type pair = [`BTCUSD | `LTCBTC]
     and type ticker = (int64, int64) Mt.ticker_with_vwap
     and type book_entry = int64 Mt.tick
-    and type trade = (int64, int64) Mt.tick_with_direction_ts
+    and type trade = (int64, int64) Mt.tick_with_d_ts_ns
 end
 
 module Kraken = struct
