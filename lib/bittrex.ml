@@ -66,8 +66,7 @@ let timestamp_of_float_exn = int_of_float_mult_exn 6
 let gettimeofday_int64 () = Int64.of_float @@ Unix.gettimeofday () *. 1e6
 
 module Bitfinex (H: HTTP_CLIENT) = struct
-  open H
-  type 'a io = 'a H.t
+  include H
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = int64 Mt.tick
   type trade = (int64, int64) Mt.tick_with_d_ts_ns
@@ -184,18 +183,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     trades ?since ?limit p >>= fun p ->
     return @@ CCError.map (List.map of_raw) p
 
-  class exchange =
-    object
-      method name : string = name
-      method pairs : pair list = pairs
-      method ticker : pair -> (ticker, string) CCError.t H.t = ticker
-      method book : pair -> (book_entry Mt.orderbook, string) CCError.t H.t = book
-      method trades : ?since:int64 -> ?limit:int ->
-        pair -> (trade list, string) CCError.t H.t = trades
-    end
-
-  let exchange = new exchange
 end
+
 
 module Bittrex (H: HTTP_CLIENT) = struct
   open H
@@ -497,8 +486,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
 end
 
 module BTCE (H: HTTP_CLIENT) = struct
-  open H
-  type 'a io = 'a H.t
+  include H
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = int64 Mt.tick
   type trade = (int64, int64) Mt.tick_with_d_ts_ns
@@ -613,18 +601,6 @@ module BTCE (H: HTTP_CLIENT) = struct
               | "ask" -> `Ask
               | _ -> `Unset)) trades)
       trades
-
-  class exchange =
-    object
-      method name : string = name
-      method pairs : pair list = pairs
-      method ticker : pair -> (ticker, string) CCError.t H.t = ticker
-      method book : pair -> (book_entry Mt.orderbook, string) CCError.t H.t = book
-      method trades : ?since:int64 -> ?limit:int ->
-        pair -> (trade list, string) CCError.t H.t = trades
-    end
-
-  let exchange = new exchange
 end
 
 module Poloniex (H: HTTP_CLIENT) = struct
@@ -717,8 +693,7 @@ module Poloniex (H: HTTP_CLIENT) = struct
 end
 
 module Kraken (H: HTTP_CLIENT) = struct
-  open H
-  type 'a io = 'a H.t
+  include H
   type pair = [`BTCUSD | `BTCLTC]
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = (int64, int64) Mt.tick_with_timestamp
@@ -826,18 +801,6 @@ module Kraken (H: HTTP_CLIENT) = struct
     get "public/Trades" ["pair", string_of_pair p]
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | _ -> `Error "Kraken API modified")
-
-  class exchange =
-    object
-      method name : string = name
-      method pairs : pair list = pairs
-      method ticker : pair -> (ticker, string) CCError.t H.t = ticker
-      method book : pair -> (book_entry Mt.orderbook, string) CCError.t H.t = book
-      method trades : ?since:int64 -> ?limit:int ->
-        pair -> (trade list, string) CCError.t H.t = trades
-    end
-
-  let exchange = new exchange
 end
 
 module Hitbtc (H: HTTP_CLIENT) = struct

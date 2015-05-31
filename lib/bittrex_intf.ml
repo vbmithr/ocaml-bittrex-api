@@ -1,12 +1,17 @@
-module type HTTP_CLIENT = sig
+module type IO = sig
   include Cohttp.S.IO
   val (>>|) : 'a t -> ('a -> 'b) -> 'b t
+  val all : 'a t list -> 'a list t
+end
+
+module type HTTP_CLIENT = sig
+  include IO
 
   val get : string -> (string * string) list -> [`Ok of string | `Error of string] t
 end
 
-module type EXCHANGE = sig
-  type 'a io
+module type EXCHANGE_SIMPLE = sig
+  include IO
   type pair
   type ticker
   type book_entry
@@ -14,23 +19,31 @@ module type EXCHANGE = sig
 
   val name : string
   val pairs : pair list
+  val string_of_pair : pair -> string
 
   val ticker : pair ->
-    [`Ok of ticker | `Error of string] io
+    [`Ok of ticker | `Error of string] t
 
   val book : pair ->
-    [`Ok of book_entry Mt.orderbook | `Error of string] io
+    [`Ok of book_entry Mt.orderbook | `Error of string] t
 
   val trades : ?since:int64 -> ?limit:int -> pair ->
-    [`Ok of trade list | `Error of string] io
+    [`Ok of trade list | `Error of string] t
+end
+
+module type EXCHANGE = sig
+  include EXCHANGE_SIMPLE
 
   val exchange :
     <
       name : string;
       pairs : pair list;
-      ticker : pair -> [`Ok of ticker | `Error of string] io;
-      book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] io;
-      trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of trade list | `Error of string] io
+      ticker : pair -> [`Ok of ticker | `Error of string] t;
+      book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] t;
+      trades : ?since:int64 -> ?limit:int -> pair ->
+        [`Ok of trade list | `Error of string] t;
+      all_trades : ?since:int64 -> ?limit:int -> unit ->
+        [`Ok of (string * trade list) list | `Error of string] t
     >
 end
 
