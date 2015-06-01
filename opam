@@ -7,10 +7,16 @@ homepage: "http://github.com/vbmithr/ocaml-bittrex-api"
 dev-repo: "git://github.com/vbmithr/ocaml-bittrex-api"
 bug-reports: "http://github.com/vbmithr/ocaml-bittrex-api/issues"
 license: "ISC"
+
 build: [
   [ "ocaml" "pkg/build.ml" "native=true" "native-dynlink=true" ]
 ]
+
 depends: [
-  "ocamlfind" {build} "ppx_deriving_yojson"
-  "lwt" "cohttp" "nocrypto" "cstruct"
+  "ocamlfind" {build}
+  "mt"
+  "ppx_deriving_yojson"
+  "containers"
+  "async_ssl"
+  "cohttp"
 ]
