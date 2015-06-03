@@ -13,7 +13,7 @@ let ignore_log label f =
 type pair = [`BTCUSD]
 type ticker = (int64, int64) Mt.ticker_with_vwap
 type book_entry = int64 Mt.tick
-type trade = (int64, int64) Mt.tick_with_direction_ts
+type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
 type exchange =
   <
