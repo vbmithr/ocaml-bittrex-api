@@ -14,7 +14,7 @@ module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
   let all_trades ?since ?limit () =
     let map_f p =
       trades ?since ?limit p >>= fun ts ->
-      return @@ CCError.map (fun ts -> string_of_pair p, ts) ts
+      return @@ CCError.map (fun ts -> p, ts) ts
     in
     let ts = List.map ~f:map_f pairs in
     all ts >>= fun ts ->
@@ -29,7 +29,7 @@ module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
       method trades : ?since:int64 -> ?limit:int ->
         pair -> (trade list, string) CCError.t t = trades
       method all_trades : ?since:int64 -> ?limit:int -> unit ->
-        ((string * trade list) list, string) CCError.t t = all_trades
+        ((E.pair * trade list) list, string) CCError.t t = all_trades
     end
 
   let exchange = new exchange
