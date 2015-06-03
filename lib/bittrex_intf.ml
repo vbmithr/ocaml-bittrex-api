@@ -33,17 +33,16 @@ end
 module type EXCHANGE = sig
   include EXCHANGE_SIMPLE
 
-  val exchange :
-    <
-      name : string;
-      pairs : pair list;
-      ticker : pair -> [`Ok of ticker | `Error of string] t;
-      book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] t;
-      trades : ?since:int64 -> ?limit:int -> pair ->
-        [`Ok of trade list | `Error of string] t;
-      all_trades : ?since:int64 -> ?limit:int -> unit ->
-        [`Ok of (string * trade list) list | `Error of string] t
-    >
+  class exchange : object
+    method name : string
+    method pairs : pair list
+    method ticker : pair -> [`Ok of ticker | `Error of string] t
+    method book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] t
+    method trades : ?since:int64 -> ?limit:int -> pair ->
+      [`Ok of trade list | `Error of string] t
+    method all_trades : ?since:int64 -> ?limit:int -> unit ->
+      [`Ok of (pair * trade list) list | `Error of string] t
+  end
 end
 
 module Bitfinex = struct

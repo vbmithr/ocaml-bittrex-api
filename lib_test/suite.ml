@@ -24,9 +24,9 @@ type exchange =
   >
 
 let obj_of_name = function
-  | "bitfinex" -> (Bitfinex.exchange :> exchange)
-  | "btce" -> (BTCE.exchange :> exchange)
-  | "kraken" -> (Kraken.exchange :> exchange)
+  | "bitfinex" -> (new Bitfinex.exchange :> exchange)
+  | "btce" -> (new BTCE.exchange :> exchange)
+  | "kraken" -> (new Kraken.exchange :> exchange)
   | _ -> invalid_arg "module_of_name"
 
 let run_tests e =
