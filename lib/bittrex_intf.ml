@@ -19,7 +19,6 @@ module type EXCHANGE_SIMPLE = sig
 
   val name : string
   val pairs : pair list
-  val string_of_pair : pair -> string
 
   val ticker : pair ->
     [`Ok of ticker | `Error of string] t
