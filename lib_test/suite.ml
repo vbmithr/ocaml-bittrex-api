@@ -10,7 +10,7 @@ let ignore_log label f =
   | `Ok _ -> Log.info log "Checked %s OK" label
   | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
 
-type pair = [`BTCUSD]
+type pair = [`XBTUSD]
 type ticker = (int64, int64) Mt.ticker_with_vwap
 type book_entry = int64 Mt.tick
 type trade = (int64, int64) Mt.tick_with_d_ts_ns
@@ -31,7 +31,7 @@ let obj_of_name = function
 
 let run_tests e =
   let e = obj_of_name e in
-  let pair = `BTCUSD in
+  let pair = `XBTUSD in
   ignore_log (e#name ^ "::ticker") (fun () -> e#ticker pair) >>= fun () ->
   ignore_log (e#name ^ "::book") (fun () -> e#book pair) >>= fun () ->
   ignore_log (e#name^ "::trades") (fun () -> e#trades pair) >>= fun () ->

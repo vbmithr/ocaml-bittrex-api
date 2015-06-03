@@ -47,7 +47,7 @@ end
 
 module Bitfinex = struct
   module type S = EXCHANGE
-    with type pair = [`BTCUSD | `LTCBTC]
+    with type pair = [`XBTUSD | `LTCXBT]
     and type ticker = (int64, int64) Mt.ticker_with_vwap
     and type book_entry = int64 Mt.tick
     and type trade = (int64, int64) Mt.tick_with_d_ts_ns
@@ -55,7 +55,7 @@ end
 
 module BTCE = struct
   module type S = EXCHANGE
-    with type pair = [`BTCUSD | `LTCBTC]
+    with type pair = [`XBTUSD | `LTCXBT]
     and type ticker = (int64, int64) Mt.ticker_with_vwap
     and type book_entry = int64 Mt.tick
     and type trade = (int64, int64) Mt.tick_with_d_ts_ns
@@ -63,7 +63,7 @@ end
 
 module Kraken = struct
   module type S = EXCHANGE
-    with type pair = [`BTCUSD | `BTCLTC]
+    with type pair = [`XBTUSD | `XBTLTC]
      and type ticker = (int64, int64) Mt.ticker_with_vwap
      and type book_entry = (int64, int64) Mt.tick_with_timestamp
      and type trade = < d : [ `Ask | `Bid | `Unset ];

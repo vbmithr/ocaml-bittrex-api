@@ -67,22 +67,22 @@ let gettimeofday_int64 () = Int64.of_float @@ Unix.gettimeofday () *. 1e6
 
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
+  type pair = [`XBTUSD | `LTCXBT]
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = int64 Mt.tick
   type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
-  let name = "bitfinex"
-
+  let name = "BITFINEX"
+  let pairs = [`XBTUSD; `LTCXBT]
+  let trade_increment = 1
   let get endpoint params yojson_to_a =
     get endpoint params >>|
     CCError.(flat_map (fun s -> flat_map yojson_to_a (yojson_of_string s)))
 
-  type pair = [`BTCUSD | `LTCBTC]
-  let pairs = [`BTCUSD; `LTCBTC]
 
   let string_of_pair = function
-    | `BTCUSD -> "BTCUSD"
-    | `LTCBTC -> "LTCBTC"
+    | `XBTUSD -> "BTCUSD"
+    | `LTCXBT -> "LTCBTC"
 
   module Ticker = struct
     type t = {
@@ -206,10 +206,10 @@ module Bittrex (H: HTTP_CLIENT) = struct
     in
     get endpoint params >>| CCError.flat_map handle_err
 
-  type supported_curr = [`BTC | `LTC | `DOGE]
+  type supported_curr = [`XBT | `LTC | `DOGE]
 
   let string_of_curr = function
-    | `BTC -> "BTC"
+    | `XBT -> "BTC"
     | `LTC -> "LTC"
     | `DOGE -> "DOGE"
 
@@ -350,7 +350,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
                   | _ -> `Error "success=true but data=None")
     in get endpoint params >>| CCError.flat_map handle_err
 
-  type supported_curr = [`BTC | `LTC | `DOGE]
+  type supported_curr = [`XBT | `LTC | `DOGE]
 
   module Currency = struct
     module Raw = struct
@@ -457,7 +457,7 @@ module Cryptsy (H: HTTP_CLIENT) = struct
       include Stringable.Of_jsonable(T)
 
       let string_of_curr = function
-        | `BTC -> "btc"
+        | `XBT -> "btc"
         | `LTC -> "ltc"
         | `DOGE -> "doge"
 
@@ -502,12 +502,12 @@ module BTCE (H: HTTP_CLIENT) = struct
     in
     get endpoint params >>| CCError.flat_map handle_err
 
-  type pair = [`BTCUSD | `LTCBTC]
-  let pairs = [`BTCUSD; `LTCBTC]
+  type pair = [`XBTUSD | `LTCXBT]
+  let pairs = [`XBTUSD; `LTCXBT]
 
   let string_of_pair = function
-    | `BTCUSD -> "btc_usd"
-    | `LTCBTC -> "ltc_btc"
+    | `XBTUSD -> "btc_usd"
+    | `LTCXBT -> "ltc_btc"
 
   module Ticker = struct
     type t = {
@@ -606,10 +606,10 @@ end
 module Poloniex (H: HTTP_CLIENT) = struct
   open H
 
-  type supported_curr = [`BTC | `LTC | `DOGE]
+  type supported_curr = [`XBT | `LTC | `DOGE]
 
   let string_of_curr = function
-    | `BTC -> "BTC"
+    | `XBT -> "BTC"
     | `LTC -> "LTC"
     | `DOGE -> "DOGE"
 
@@ -694,16 +694,16 @@ end
 
 module Kraken (H: HTTP_CLIENT) = struct
   include H
-  type pair = [`BTCUSD | `BTCLTC]
+  type pair = [`XBTUSD | `XBTLTC]
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = (int64, int64) Mt.tick_with_timestamp
 
-  let pairs = [`BTCUSD; `BTCLTC]
+  let pairs = [`XBTUSD; `XBTLTC]
   let name = "kraken"
 
   let string_of_pair = function
-    | `BTCUSD -> "XXBTZUSD"
-    | `BTCLTC -> "XXBTXLTC"
+    | `XBTUSD -> "XXBTZUSD"
+    | `XBTLTC -> "XXBTXLTC"
 
   type 'a error_monad = {
     error: string list;
@@ -816,10 +816,10 @@ module Hitbtc (H: HTTP_CLIENT) = struct
       CCError.flat_map yojson_to_a @@ yojson_of_string s in
     get endpoint params >>| CCError.flat_map handle_err
 
-  type supported_curr = [`BTC | `LTC | `DOGE]
+  type supported_curr = [`XBT | `LTC | `DOGE]
 
   let string_of_curr = function
-    | `BTC -> "BTC"
+    | `XBT -> "BTC"
     | `LTC -> "LTC"
     | `DOGE -> "DOGE"
 
