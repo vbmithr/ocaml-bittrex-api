@@ -491,7 +491,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   type book_entry = int64 Mt.tick
   type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
-  let name = "btce"
+  let name = "BTCE"
 
   let get endpoint params yojson_to_a =
     let handle_err s =
@@ -699,7 +699,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   type book_entry = (int64, int64) Mt.tick_with_timestamp
 
   let pairs = [`XBTUSD; `XBTLTC]
-  let name = "kraken"
+  let name = "KRAKEN"
 
   let string_of_pair = function
     | `XBTUSD -> "XXBTZUSD"
