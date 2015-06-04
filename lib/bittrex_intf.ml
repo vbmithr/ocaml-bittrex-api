@@ -40,6 +40,9 @@ module type EXCHANGE = sig
     method book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] t
     method trades : ?since:int64 -> ?limit:int -> pair ->
       [`Ok of trade list | `Error of string] t
+    method all_tickers : ((pair * ticker) list, string) CCError.t t
+    method all_books :
+      ((pair * book_entry Mt.orderbook) list, string) CCError.t t
     method all_trades : ?since:int64 -> ?limit:int -> unit ->
       [`Ok of (pair * trade list) list | `Error of string] t
   end
