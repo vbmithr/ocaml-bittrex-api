@@ -29,8 +29,9 @@ module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
     all bs >>= fun bs ->
     return @@ CCError.map_l (fun a -> a) bs
 
-  let all_trades ?since ?limit () =
+  let all_trades ?since_f ?limit () =
     let map_f p =
+      let since = Option.map since_f ~f:(fun sf -> sf p) in
       trades ?since ?limit p >>= fun ts ->
       return @@ CCError.map (fun ts -> p, ts) ts
     in
@@ -49,7 +50,7 @@ module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
       method all_tickers : ((E.pair * ticker) list, string) CCError.t t = all_tickers ()
       method all_books :
         ((E.pair * book_entry Mt.orderbook) list, string) CCError.t t = all_books ()
-      method all_trades : ?since:int64 -> ?limit:int -> unit ->
+      method all_trades : ?since_f:(E.pair -> int64) -> ?limit:int -> unit ->
         ((E.pair * trade list) list, string) CCError.t t = all_trades
     end
 end
