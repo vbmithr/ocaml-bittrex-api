@@ -31,6 +31,7 @@ module Int64 = struct
   include Int64
   let ( * ) = mul
   let ( + ) = add
+  let ( / ) = div
 end
 
 let int_of_string_mult mult s =
@@ -156,12 +157,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-    let trades ?since ?limit p =
+    let trades ?(since = -1L) ?(limit = -1) p =
       get ("trades/" ^ string_of_pair p)
-        ((if CCOpt.is_none since then []
-          else ["timestamp", Int64.to_string @@ CCOpt.get_exn since])
-         @ (if CCOpt.is_none limit then []
-            else ["limit_trades", string_of_int @@ CCOpt.get_exn limit]))
+        ((if since = -1L then []
+          else ["timestamp", Int64.(to_string @@ since / 1000000000L)])
+         @ (if limit = -1 then []
+             else ["limit_trades", string_of_int limit]))
         ts_of_json
 
     let kind_of_raw = function
@@ -786,7 +787,7 @@ module Kraken (H: HTTP_CLIENT) = struct
       method misc : string = m
     end
 
-  let trades ?since ?limit p =
+  let trades ?(since = -1L) ?(limit = -1) p =
     let trade_of_json = function
       | `List [`String p; `String v; `Float ts; `String d; `String k; `String m] ->
         let ns =
@@ -803,7 +804,8 @@ module Kraken (H: HTTP_CLIENT) = struct
               ~m
             )
       | _ -> `Error "Kraken trade type modified" in
-    get "public/Trades" ["pair", string_of_pair p]
+    get "public/Trades" (("pair", string_of_pair p) ::
+    (if since = -1L then [] else ["since", Int64.to_string since]))
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | _ -> `Error "Kraken API modified")
 end

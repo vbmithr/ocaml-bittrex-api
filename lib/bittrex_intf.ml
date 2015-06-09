@@ -28,6 +28,11 @@ module type EXCHANGE_SIMPLE = sig
 
   val trades : ?since:int64 -> ?limit:int -> pair ->
     [`Ok of trade list | `Error of string] t
+    (** [trades ?since ?limit pair] is a thread that returns a list of
+        trades contained in an error monad. If the underlying exchange
+        supports it, the list will be limited to [limit] entries, and
+        will not contain trades older than [since], where [since] is
+        an unix timestamp in nanoseconds. *)
 end
 
 module type EXCHANGE = sig
