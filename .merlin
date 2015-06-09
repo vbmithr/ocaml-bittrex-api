@@ -10,3 +10,4 @@ PKG oUnit
 PKG conduit
 PKG containers
 PKG mt
+PKG oclock

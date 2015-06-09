@@ -64,8 +64,6 @@ let satoshis_of_string_exn = int_of_string_mult_exn 8
 let satoshis_of_float_exn = int_of_float_mult_exn 8
 let timestamp_of_float_exn = int_of_float_mult_exn 6
 
-let gettimeofday_int64 () = Int64.of_float @@ Unix.gettimeofday () *. 1e6
-
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
   type pair = [`XBTUSD | `LTCXBT]
@@ -649,7 +647,7 @@ module Poloniex (H: HTTP_CLIENT) = struct
     end
 
     let of_raw t = new Mt.ticker
-      ~ts:(gettimeofday_int64 ())
+      ~ts:Oclock.(gettime realtime_coarse)
       ~last:(satoshis_of_string_exn t.Raw.last)
       ~bid:(satoshis_of_string_exn t.Raw.highestBid)
       ~ask:(satoshis_of_string_exn t.Raw.lowestAsk)
@@ -741,7 +739,7 @@ module Kraken (H: HTTP_CLIENT) = struct
                   | _ -> `Error "Kraken API modified")
 
     let of_raw t = new Mt.ticker_with_vwap
-      ~ts:(gettimeofday_int64 ())
+      ~ts:Oclock.(gettime realtime_coarse)
       ~bid:(satoshis_of_string_exn @@ List.hd t.b)
       ~ask:(satoshis_of_string_exn @@ List.hd t.a)
       ~last:(satoshis_of_string_exn @@ List.hd t.c)

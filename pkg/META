@@ -3,7 +3,7 @@ description = "Bittrex API library"
 requires = "bittrex.core"
 
 package "core" (
-  requires = "mt ppx_deriving_yojson.runtime ppx_deriving.std containers"
+  requires = "mt ppx_deriving_yojson.runtime ppx_deriving.std containers oclock"
   archive(byte) = "bittrex.cma"
   archive(byte, plugin) = "bittrex.cma"
   archive(native) = "bittrex.cmxa"
