@@ -19,6 +19,7 @@ module type EXCHANGE_SIMPLE = sig
 
   val name : string
   val pairs : pair list
+  val pair_of_string : string -> pair option
 
   val ticker : pair ->
     [`Ok of ticker | `Error of string] t
@@ -41,10 +42,9 @@ module type EXCHANGE = sig
   class exchange : object
     method name : string
     method pairs : pair list
-    method ticker : pair -> [`Ok of ticker | `Error of string] t
-    method book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] t
-    method trades : ?since:int64 -> ?limit:int -> pair ->
-      [`Ok of trade list | `Error of string] t
+    method ticker : string -> [`Ok of ticker | `Error of string] t
+    method book : string -> [`Ok of book_entry Mt.orderbook | `Error of string] t
+    method trades : ?since:int64 -> ?limit:int -> string -> [`Ok of trade list | `Error of string] t
   end
 end
 

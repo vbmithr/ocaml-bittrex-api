@@ -78,10 +78,14 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     get endpoint params >>|
     CCError.(flat_map (fun s -> flat_map yojson_to_a (yojson_of_string s)))
 
-
   let string_of_pair = function
     | `XBTUSD -> "BTCUSD"
     | `LTCXBT -> "LTCBTC"
+
+  let pair_of_string = function
+    | "XBTUSD" -> Some `XBTUSD
+    | "LTCXBT" -> Some `LTCXBT
+    | _ -> None
 
   module Ticker = struct
     type t = {
@@ -508,6 +512,11 @@ module BTCE (H: HTTP_CLIENT) = struct
     | `XBTUSD -> "btc_usd"
     | `LTCXBT -> "ltc_btc"
 
+  let pair_of_string = function
+    | "XBTUSD" -> Some `XBTUSD
+    | "LTCXBT" -> Some `LTCXBT
+    | _ -> None
+
   module Ticker = struct
     type t = {
       high: float;
@@ -697,12 +706,17 @@ module Kraken (H: HTTP_CLIENT) = struct
   type ticker = (int64, int64) Mt.ticker_with_vwap
   type book_entry = (int64, int64) Mt.tick_with_timestamp
 
-  let pairs = [`XBTUSD; `XBTLTC]
   let name = "KRAKEN"
+  let pairs = [`XBTUSD; `XBTLTC]
 
   let string_of_pair = function
     | `XBTUSD -> "XXBTZUSD"
     | `XBTLTC -> "XXBTXLTC"
+
+  let pair_of_string = function
+    | "XBTUSD" -> Some `XBTUSD
+    | "XBTLTC" -> Some `XBTLTC
+    | _ -> None
 
   type 'a error_monad = {
     error: string list;
