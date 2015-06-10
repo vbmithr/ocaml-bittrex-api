@@ -750,7 +750,7 @@ module Kraken (H: HTTP_CLIENT) = struct
 
     let ticker p = get "public/Ticker" ["pair", string_of_pair p]
         (function | `Assoc [_, t] -> of_yojson t
-                  | _ -> `Error "Kraken API modified")
+                  | json -> `Error (Yojson.Safe.to_string json))
 
     let of_raw t = new Mt.ticker_with_vwap
       ~ts:Oclock.(gettime realtime_coarse)
@@ -786,11 +786,11 @@ module Kraken (H: HTTP_CLIENT) = struct
                 | _ -> raise Exit
               ) bids) () in
         (try `Ok (f ()) with Exit -> `Error "book")
-      | _ -> `Error "lift_f" in
+      | json -> `Error (Yojson.Safe.to_string json) in
 
     get "public/Depth" ["pair", string_of_pair p]
       (function | `Assoc [_, t] -> lift_f t
-                | _ -> `Error "Kraken API modified")
+                | json -> `Error (Yojson.Safe.to_string json))
 
   class trade ~p ~v ~ts ~ns ~d ~k ~m =
     object
@@ -815,11 +815,11 @@ module Kraken (H: HTTP_CLIENT) = struct
               ~k:(match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset)
               ~m
             )
-      | _ -> `Error "Kraken trade type modified" in
+      | json -> `Error (Yojson.Safe.to_string json) in
     get "public/Trades" (("pair", string_of_pair p) ::
     (if since = -1L then [] else ["since", Int64.to_string since]))
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
-                | _ -> `Error "Kraken API modified")
+                | json -> `Error (Yojson.Safe.to_string json))
 end
 
 module Hitbtc (H: HTTP_CLIENT) = struct
