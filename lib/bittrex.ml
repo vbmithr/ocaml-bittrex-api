@@ -800,15 +800,25 @@ module Kraken (H: HTTP_CLIENT) = struct
     end
 
   let trades ?(since = -1L) ?(limit = -1) p =
+    let ns_of_float ts =
+      let s = Printf.sprintf "%.3f" ts in
+      Int64.of_string @@
+      String.(sub s (index s '.' + 1) 3) ^ "000000" in
     let trade_of_json = function
+      | `List [`String p; `String v; `Int ts; `String d; `String k; `String m] ->
+        `Ok (new trade
+              ~ts:(Int64.of_int ts)
+              ~ns:0L
+              ~p:(satoshis_of_string_exn p)
+              ~v:(satoshis_of_string_exn v)
+              ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
+              ~k:(match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset)
+              ~m
+            )
       | `List [`String p; `String v; `Float ts; `String d; `String k; `String m] ->
-        let ns =
-          let s = Printf.sprintf "%.3f" ts in
-          Int64.of_string @@
-          String.(sub s (index s '.' + 1) 3) ^ "000000" in
         `Ok (new trade
               ~ts:Int64.(of_int @@ truncate ts)
-              ~ns
+              ~ns:(ns_of_float ts)
               ~p:(satoshis_of_string_exn p)
               ~v:(satoshis_of_string_exn v)
               ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
