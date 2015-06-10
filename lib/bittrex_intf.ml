@@ -45,36 +45,25 @@ module type EXCHANGE = sig
     method book : pair -> [`Ok of book_entry Mt.orderbook | `Error of string] t
     method trades : ?since:int64 -> ?limit:int -> pair ->
       [`Ok of trade list | `Error of string] t
-    method all_tickers : ((pair * ticker) list, string) CCError.t t
-    method all_books :
-      ((pair * book_entry Mt.orderbook) list, string) CCError.t t
-    method all_trades : ?since_f:(pair -> int64) -> ?limit:int -> unit ->
-      [`Ok of (pair * trade list) list | `Error of string] t
   end
 end
 
-module Bitfinex = struct
-  module type S = EXCHANGE
-    with type pair = [`XBTUSD | `LTCXBT]
-    and type ticker = (int64, int64) Mt.ticker_with_vwap
-    and type book_entry = int64 Mt.tick
-    and type trade = (int64, int64) Mt.tick_with_d_ts_ns
-end
+module type BITFINEX = EXCHANGE
+  with type pair = [`XBTUSD | `LTCXBT]
+   and type ticker = (int64, int64) Mt.ticker_with_vwap
+   and type book_entry = int64 Mt.tick
+   and type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
-module BTCE = struct
-  module type S = EXCHANGE
-    with type pair = [`XBTUSD | `LTCXBT]
-    and type ticker = (int64, int64) Mt.ticker_with_vwap
-    and type book_entry = int64 Mt.tick
-    and type trade = (int64, int64) Mt.tick_with_d_ts_ns
-end
+module type BTCE = EXCHANGE
+  with type pair = [`XBTUSD | `LTCXBT]
+   and type ticker = (int64, int64) Mt.ticker_with_vwap
+   and type book_entry = int64 Mt.tick
+   and type trade = (int64, int64) Mt.tick_with_d_ts_ns
 
-module Kraken = struct
-  module type S = EXCHANGE
-    with type pair = [`XBTUSD | `XBTLTC]
-     and type ticker = (int64, int64) Mt.ticker_with_vwap
-     and type book_entry = (int64, int64) Mt.tick_with_timestamp
-     and type trade = < d : [ `Ask | `Bid | `Unset ];
-                        kind : [ `Limit | `Market | `Unset ]; misc : string;
-                        p : int64; ts : int64; ns : int64; v : int64 >
-end
+module type KRAKEN = EXCHANGE
+  with type pair = [`XBTUSD | `XBTLTC]
+   and type ticker = (int64, int64) Mt.ticker_with_vwap
+   and type book_entry = (int64, int64) Mt.tick_with_timestamp
+   and type trade = < d : [ `Ask | `Bid | `Unset ];
+                      kind : [ `Limit | `Market | `Unset ]; misc : string;
+                      p : int64; ts : int64; ns : int64; v : int64 >
