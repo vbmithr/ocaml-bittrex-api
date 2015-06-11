@@ -1,3 +1,5 @@
+open Mt
+
 module type IO = sig
   include Cohttp.S.IO
   val (>>|) : 'a t -> ('a -> 'b) -> 'b t
@@ -25,7 +27,7 @@ module type EXCHANGE_SIMPLE = sig
     [`Ok of ticker | `Error of string] t
 
   val book : pair ->
-    [`Ok of book_entry Mt.orderbook | `Error of string] t
+    [`Ok of book_entry OrderBook.t | `Error of string] t
 
   val trades : ?since:int64 -> ?limit:int -> pair ->
     [`Ok of trade list | `Error of string] t
@@ -43,27 +45,27 @@ module type EXCHANGE = sig
     method name : string
     method pairs : pair list
     method ticker : string -> [`Ok of ticker | `Error of string] t
-    method book : string -> [`Ok of book_entry Mt.orderbook | `Error of string] t
+    method book : string -> [`Ok of book_entry OrderBook.t | `Error of string] t
     method trades : ?since:int64 -> ?limit:int -> string -> [`Ok of trade list | `Error of string] t
   end
 end
 
 module type BITFINEX = EXCHANGE
   with type pair = [`XBTUSD | `LTCXBT]
-   and type ticker = (int64, int64) Mt.ticker_with_vwap
-   and type book_entry = int64 Mt.tick
-   and type trade = (int64, int64) Mt.tick_with_d_ts_ns
+   and type ticker = (int64, int64) Ticker.tvwap
+   and type book_entry = int64 Mt.Tick.t
+   and type trade = (int64, int64) Mt.Tick.tdtsns
 
 module type BTCE = EXCHANGE
   with type pair = [`XBTUSD | `LTCXBT]
-   and type ticker = (int64, int64) Mt.ticker_with_vwap
-   and type book_entry = int64 Mt.tick
-   and type trade = (int64, int64) Mt.tick_with_d_ts_ns
+   and type ticker = (int64, int64) Ticker.tvwap
+   and type book_entry = int64 Tick.t
+   and type trade = (int64, int64) Mt.Tick.tdtsns
 
 module type KRAKEN = EXCHANGE
   with type pair = [`XBTUSD | `XBTLTC]
-   and type ticker = (int64, int64) Mt.ticker_with_vwap
-   and type book_entry = (int64, int64) Mt.tick_with_timestamp
+   and type ticker = (int64, int64) Ticker.tvwap
+   and type book_entry = (int64, int64) Tick.tts
    and type trade = < d : [ `Ask | `Bid | `Unset ];
                       kind : [ `Limit | `Market | `Unset ]; misc : string;
                       p : int64; ts : int64; ns : int64; v : int64 >

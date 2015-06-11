@@ -1,6 +1,7 @@
 open Core.Std
 open Async.Std
 open Cohttp_async
+open Mt
 open Bittrex
 
 let try_with_convert f =
@@ -19,7 +20,7 @@ module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
         pair_of_string pair |> function
         | None -> return @@ CCError.fail "not supported"
         | Some p -> ticker p
-      method book pair : (book_entry Mt.orderbook, string) CCError.t t =
+      method book pair : (book_entry OrderBook.t, string) CCError.t t =
         pair_of_string pair |> function
         | None -> return @@ CCError.fail "not supported"
         | Some p -> book p

@@ -1,6 +1,7 @@
 open Core.Std
 open Async.Std
 
+open Mt
 open Bittrex_async
 
 let log = Log.create ~level:`Info ~output:[(Log.Output.stderr ())]
@@ -11,15 +12,15 @@ let ignore_log label f =
   | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
 
 type pair = [`XBTUSD]
-type ticker = (int64, int64) Mt.ticker_with_vwap
-type book_entry = int64 Mt.tick
-type trade = (int64, int64) Mt.tick_with_d_ts_ns
+type ticker = (int64, int64) Ticker.tvwap
+type book_entry = int64 Tick.t
+type trade = (int64, int64) Tick.tdtsns
 
 type exchange =
   <
     name : string;
     ticker : string -> [`Ok of ticker | `Error of string] Deferred.t;
-    book : string -> [`Ok of book_entry Mt.orderbook | `Error of string] Deferred.t;
+    book : string -> [`Ok of book_entry OrderBook.t | `Error of string] Deferred.t;
     trades : ?since:int64 -> ?limit:int -> string -> [`Ok of trade list | `Error of string] Deferred.t
   >
 
