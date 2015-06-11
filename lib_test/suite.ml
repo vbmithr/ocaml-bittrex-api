@@ -11,31 +11,11 @@ let ignore_log label f =
   | `Ok _ -> Log.info log "Checked %s OK" label
   | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
 
-type pair = [`XBTUSD]
-type ticker = (int64, int64) Ticker.tvwap
-type book_entry = int64 Tick.t
-type trade = (int64, int64) Tick.tdts
-
-type exchange =
-  <
-    name : string;
-    ticker : pair -> [`Ok of ticker | `Error of string] Deferred.t;
-    book : pair -> [`Ok of book_entry OrderBook.t | `Error of string] Deferred.t;
-    trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of trade list | `Error of string] Deferred.t
-  >
-
-let obj_of_name = function
-  | "bitfinex" -> (new Bitfinex.exchange :> exchange)
-  | "btce" -> (new BTCE.exchange :> exchange)
-  | "kraken" -> (new Kraken.exchange :> exchange)
-  | _ -> invalid_arg "module_of_name"
-
 let run_tests e =
-  let e = obj_of_name e in
   let pair = `XBTUSD in
-  ignore_log (e#name ^ "::ticker") (fun () -> e#ticker pair) >>= fun () ->
-  ignore_log (e#name ^ "::book") (fun () -> e#book pair) >>= fun () ->
-  ignore_log (e#name^ "::trades") (fun () -> e#trades pair) >>= fun () ->
+  ignore_log (e ^ "::ticker") (fun () -> Generic.ticker pair e) >>= fun () ->
+  ignore_log (e ^ "::book") (fun () -> Generic.book pair e) >>= fun () ->
+  ignore_log (e^ "::trades") (fun () -> Generic.trades pair e) >>= fun () ->
   Deferred.unit
 
 let main exchanges =

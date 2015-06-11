@@ -9,19 +9,6 @@ let try_with_convert f =
   | Ok r -> `Ok r
   | Error exn -> `Error (Exn.to_string exn)
 
-module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
-  include E
-
-  class exchange =
-    object
-      method name : string = name
-      method pairs : pair list = pairs
-      method ticker : pair -> (ticker, string) CCError.t t = ticker
-      method book : pair -> (book_entry OrderBook.t, string) CCError.t t = book
-      method trades : ?since:int64 -> ?limit:int -> pair -> (trade list, string) CCError.t t = trades
-    end
-end
-
 module AsyncIO = struct
   include Cohttp_async_io
   include Deferred.Infix
@@ -42,7 +29,7 @@ module Bitfinex = struct
         Body.to_string body in
       try_with_convert f
   end
-  include Make_with_obj(Bitfinex(H))
+  include Bitfinex(H)
 end
 
 module BTCE = struct
@@ -60,7 +47,7 @@ module BTCE = struct
         Body.to_string body in
       try_with_convert f
   end
-  include Make_with_obj(BTCE(H))
+  include BTCE(H)
 end
 
 module Bittrex = struct
@@ -126,7 +113,7 @@ module Kraken = struct
         Body.to_string body in
       try_with_convert f
   end
-  include Make_with_obj(Kraken(H))
+  include Kraken(H)
 end
 
 module Hitbtc = struct
@@ -144,4 +131,58 @@ module Hitbtc = struct
         Body.to_string body in
       try_with_convert f
   end
+end
+
+module Generic = struct
+  include AsyncIO
+  type ticker = (int64, int64) Ticker.tvwap
+  type book_entry = int64 Mt.Tick.t
+  type trade = (int64, int64) Mt.Tick.tdts
+
+  let ticker c = function
+    | "bitfinex" ->
+      Bitfinex.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> ticker c)
+    | "btce" ->
+      BTCE.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> ticker c)
+    | "kraken" ->
+      Kraken.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> ticker c)
+    | _ -> return @@ `Error "unsupported"
+
+  let book c = function
+    | "bitfinex" ->
+      Bitfinex.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> book c)
+    | "btce" ->
+      BTCE.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> book c)
+    | "kraken" ->
+      (Kraken.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> book c)
+       :> (book_entry OrderBook.t, string) CCError.t Deferred.t)
+    | _ -> return @@ `Error "unsupported"
+
+  let trades ?since ?limit c = function
+    | "bitfinex" ->
+      Bitfinex.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> trades ?since ?limit c)
+    | "btce" ->
+      BTCE.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> trades ?since ?limit c)
+    | "kraken" ->
+      (Kraken.(accept c |> function
+        | None -> return @@ `Error "unsupported"
+        | Some c -> trades ?since ?limit c)
+      :> (trade list, string) CCError.t Deferred.t)
+    | _ -> return @@ `Error "unsupported"
 end

@@ -74,6 +74,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
   let name = "BITFINEX"
   let pairs = [`XBTUSD; `LTCXBT]
+
+  let accept = function
+    | `XBTLTC -> None
+    | `XBTUSD -> Some `XBTUSD
+    | `LTCXBT -> Some `LTCXBT
+
   let trade_increment = 1
   let get endpoint params yojson_to_a =
     get endpoint params >>|
@@ -508,6 +514,11 @@ module BTCE (H: HTTP_CLIENT) = struct
   type pair = [`XBTUSD | `LTCXBT]
   let pairs = [`XBTUSD; `LTCXBT]
 
+  let accept = function
+    | `XBTLTC -> None
+    | `XBTUSD -> Some `XBTUSD
+    | `LTCXBT -> Some `LTCXBT
+
   let string_of_pair = function
     | `XBTUSD -> "btc_usd"
     | `LTCXBT -> "ltc_btc"
@@ -707,6 +718,11 @@ module Kraken (H: HTTP_CLIENT) = struct
 
   let name = "KRAKEN"
   let pairs = [`XBTUSD; `XBTLTC]
+
+  let accept = function
+    | `XBTLTC -> Some `XBTLTC
+    | `XBTUSD -> Some `XBTUSD
+    | `LTCXBT -> None
 
   let string_of_pair = function
     | `XBTUSD -> "XXBTZUSD"

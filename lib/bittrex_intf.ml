@@ -12,7 +12,12 @@ module type HTTP_CLIENT = sig
   val get : string -> (string * string) list -> [`Ok of string | `Error of string] t
 end
 
-module type EXCHANGE_SIMPLE = sig
+(* type exchange = [`Bitfinex | `BTCE | `Kraken] *)
+type all_pairs = [`XBTUSD | `LTCXBT | `XBTLTC]
+
+(** Abstract exchange type *)
+
+module type EXCHANGE = sig
   include IO
   type pair
   type ticker
@@ -20,6 +25,7 @@ module type EXCHANGE_SIMPLE = sig
   type trade
 
   val name : string
+  val accept : all_pairs -> pair option
   val pairs : pair list
   val pair_of_string : string -> pair option
 
@@ -38,16 +44,16 @@ module type EXCHANGE_SIMPLE = sig
         an unix timestamp in nanoseconds. *)
 end
 
-module type EXCHANGE = sig
-  include EXCHANGE_SIMPLE
+module type GENERIC = sig
+  include IO
+  type ticker = (int64, int64) Ticker.tvwap
+  type book_entry = int64 Mt.Tick.t
+  type trade = (int64, int64) Mt.Tick.tdts
 
-  class exchange : object
-    method name : string
-    method pairs : pair list
-    method ticker : pair -> [`Ok of ticker | `Error of string] t
-    method book : pair -> [`Ok of book_entry OrderBook.t | `Error of string] t
-    method trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of trade list | `Error of string] t
-  end
+  val ticker : all_pairs -> string -> (ticker, string) CCError.t t
+  val book : all_pairs -> string -> (book_entry OrderBook.t, string) CCError.t t
+  val trades : ?since:int64 -> ?limit:int -> all_pairs -> string ->
+    (trade list, string) CCError.t t
 end
 
 module type BITFINEX = EXCHANGE
