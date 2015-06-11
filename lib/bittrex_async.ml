@@ -140,49 +140,46 @@ module Generic = struct
   type trade = (int64, int64) Mt.Tick.tdts
 
   let ticker c = function
-    | "bitfinex" ->
+    | `Bitfinex ->
       Bitfinex.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> ticker c)
-    | "btce" ->
+    | `BTCE ->
       BTCE.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> ticker c)
-    | "kraken" ->
+    | `Kraken ->
       Kraken.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> ticker c)
-    | _ -> return @@ `Error "unsupported"
 
   let book c = function
-    | "bitfinex" ->
+    | `Bitfinex ->
       Bitfinex.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> book c)
-    | "btce" ->
+    | `BTCE ->
       BTCE.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> book c)
-    | "kraken" ->
+    | `Kraken ->
       (Kraken.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> book c)
        :> (book_entry OrderBook.t, string) CCError.t Deferred.t)
-    | _ -> return @@ `Error "unsupported"
 
   let trades ?since ?limit c = function
-    | "bitfinex" ->
+    | `Bitfinex ->
       Bitfinex.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> trades ?since ?limit c)
-    | "btce" ->
+    | `BTCE ->
       BTCE.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> trades ?since ?limit c)
-    | "kraken" ->
+    | `Kraken ->
       (Kraken.(accept c |> function
         | None -> return @@ `Error "unsupported"
         | Some c -> trades ?since ?limit c)
       :> (trade list, string) CCError.t Deferred.t)
-    | _ -> return @@ `Error "unsupported"
 end

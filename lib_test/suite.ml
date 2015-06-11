@@ -11,11 +11,18 @@ let ignore_log label f =
   | `Ok _ -> Log.info log "Checked %s OK" label
   | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
 
+let exchanges_of_string s =
+  let s = String.lowercase s in match s with
+  | "bitfinex" -> `Bitfinex
+  | "btce" -> `BTCE
+  | "kraken" -> `Kraken
+  | _ -> invalid_arg "exchanges_of_string"
+
 let run_tests e =
   let pair = `XBTUSD in
-  ignore_log (e ^ "::ticker") (fun () -> Generic.ticker pair e) >>= fun () ->
-  ignore_log (e ^ "::book") (fun () -> Generic.book pair e) >>= fun () ->
-  ignore_log (e^ "::trades") (fun () -> Generic.trades pair e) >>= fun () ->
+  ignore_log (e ^ "::ticker") (fun () -> Generic.ticker pair @@ exchanges_of_string e) >>= fun () ->
+  ignore_log (e ^ "::book") (fun () -> Generic.book pair @@ exchanges_of_string e) >>= fun () ->
+  ignore_log (e^ "::trades") (fun () -> Generic.trades pair @@ exchanges_of_string e) >>= fun () ->
   Deferred.unit
 
 let main exchanges =
