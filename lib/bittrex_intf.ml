@@ -54,13 +54,13 @@ module type BITFINEX = EXCHANGE
   with type pair = [`XBTUSD | `LTCXBT]
    and type ticker = (int64, int64) Ticker.tvwap
    and type book_entry = int64 Mt.Tick.t
-   and type trade = (int64, int64) Mt.Tick.tdtsns
+   and type trade = (int64, int64) Mt.Tick.tdts
 
 module type BTCE = EXCHANGE
   with type pair = [`XBTUSD | `LTCXBT]
    and type ticker = (int64, int64) Ticker.tvwap
    and type book_entry = int64 Tick.t
-   and type trade = (int64, int64) Mt.Tick.tdtsns
+   and type trade = (int64, int64) Mt.Tick.tdts
 
 module type KRAKEN = EXCHANGE
   with type pair = [`XBTUSD | `XBTLTC]
@@ -68,4 +68,4 @@ module type KRAKEN = EXCHANGE
    and type book_entry = (int64, int64) Tick.tts
    and type trade = < d : [ `Ask | `Bid | `Unset ];
                       kind : [ `Limit | `Market | `Unset ]; misc : string;
-                      p : int64; ts : int64; ns : int64; v : int64 >
+                      p : int64; ts : int64; v : int64 >

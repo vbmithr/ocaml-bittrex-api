@@ -14,7 +14,7 @@ let ignore_log label f =
 type pair = [`XBTUSD]
 type ticker = (int64, int64) Ticker.tvwap
 type book_entry = int64 Tick.t
-type trade = (int64, int64) Tick.tdtsns
+type trade = (int64, int64) Tick.tdts
 
 type exchange =
   <

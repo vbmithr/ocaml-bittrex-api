@@ -70,7 +70,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type pair = [`XBTUSD | `LTCXBT]
   type ticker = (int64, int64) Ticker.tvwap
   type book_entry = int64 Tick.t
-  type trade = (int64, int64) Tick.tdtsns
+  type trade = (int64, int64) Tick.tdts
 
   let name = "BITFINEX"
   let pairs = [`XBTUSD; `LTCXBT]
@@ -163,7 +163,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     let trades ?(since = -1L) ?(limit = -1) p =
       get ("trades/" ^ string_of_pair p)
         ((if since = -1L then []
-          else ["timestamp", Int64.(to_string @@ since / 1000000000L)])
+          else ["timestamp", Int64.(to_string @@ since / 1_000_000_000L)])
          @ (if limit = -1 then []
              else ["limit_trades", string_of_int limit]))
         ts_of_json
@@ -174,9 +174,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       | _ -> `Unset
 
     let of_raw t =
-      new Tick.tdtsns
-        ~ts:(Int64.of_int t.timestamp)
-        ~ns:(Int64.of_int t.tid)
+      new Tick.tdts
+        ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
         ~p:(satoshis_of_string_exn t.price)
         ~v:(satoshis_of_string_exn t.amount)
         ~d:(kind_of_raw t.type_)
@@ -493,7 +492,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   include H
   type ticker = (int64, int64) Ticker.tvwap
   type book_entry = int64 Tick.t
-  type trade = (int64, int64) Tick.tdtsns
+  type trade = (int64, int64) Tick.tdts
 
   let name = "BTCE"
 
@@ -600,9 +599,8 @@ module BTCE (H: HTTP_CLIENT) = struct
     let open Trade in
     trades p >>= fun trades ->
     return @@ CCError.map (fun trades -> List.map (fun t ->
-        new Tick.tdtsns
-          ~ts:Int64.(of_int t.timestamp)
-          ~ns:Int64.(of_int t.tid)
+        new Tick.tdts
+          ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
           ~p:(satoshis_of_float_exn t.price)
           ~v:(satoshis_of_float_exn t.amount)
           ~d:(match t.type_ with
@@ -793,9 +791,9 @@ module Kraken (H: HTTP_CLIENT) = struct
       (function | `Assoc [_, t] -> lift_f t
                 | json -> `Error (Yojson.Safe.to_string json))
 
-  class trade ~p ~v ~ts ~ns ~d ~k ~m =
+  class trade ~p ~v ~ts ~d ~k ~m =
     object
-      inherit [int64, int64] Tick.tdtsns ~p ~v ~ts ~ns ~d
+      inherit [int64, int64] Tick.tdts ~p ~v ~ts ~d
       method kind : [`Market | `Limit | `Unset] = k
       method misc : string = m
     end
@@ -809,7 +807,6 @@ module Kraken (H: HTTP_CLIENT) = struct
       | `List [`String p; `String v; `Int ts; `String d; `String k; `String m] ->
         `Ok (new trade
               ~ts:(Int64.of_int ts)
-              ~ns:0L
               ~p:(satoshis_of_string_exn p)
               ~v:(satoshis_of_string_exn v)
               ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
@@ -818,8 +815,7 @@ module Kraken (H: HTTP_CLIENT) = struct
             )
       | `List [`String p; `String v; `Float ts; `String d; `String k; `String m] ->
         `Ok (new trade
-              ~ts:Int64.(of_int @@ truncate ts)
-              ~ns:(ns_of_float ts)
+              ~ts:Int64.(of_int (truncate ts) * 1_000_000_000L + ns_of_float ts)
               ~p:(satoshis_of_string_exn p)
               ~v:(satoshis_of_string_exn v)
               ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
