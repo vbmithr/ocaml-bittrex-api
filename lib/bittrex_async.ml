@@ -16,18 +16,9 @@ module Make_with_obj (E: Bittrex_intf.EXCHANGE_SIMPLE) = struct
     object
       method name : string = name
       method pairs : pair list = pairs
-      method ticker pair : (ticker, string) CCError.t t =
-        pair_of_string pair |> function
-        | None -> return @@ CCError.fail "not supported"
-        | Some p -> ticker p
-      method book pair : (book_entry OrderBook.t, string) CCError.t t =
-        pair_of_string pair |> function
-        | None -> return @@ CCError.fail "not supported"
-        | Some p -> book p
-      method trades ?since ?limit pair : (trade list, string) CCError.t t =
-        pair_of_string pair |> function
-        | None -> return @@ CCError.fail "not supported"
-        | Some p -> trades ?since ?limit p
+      method ticker : pair -> (ticker, string) CCError.t t = ticker
+      method book : pair -> (book_entry OrderBook.t, string) CCError.t t = book
+      method trades : ?since:int64 -> ?limit:int -> pair -> (trade list, string) CCError.t t = trades
     end
 end
 

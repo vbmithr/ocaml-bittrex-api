@@ -19,9 +19,9 @@ type trade = (int64, int64) Tick.tdts
 type exchange =
   <
     name : string;
-    ticker : string -> [`Ok of ticker | `Error of string] Deferred.t;
-    book : string -> [`Ok of book_entry OrderBook.t | `Error of string] Deferred.t;
-    trades : ?since:int64 -> ?limit:int -> string -> [`Ok of trade list | `Error of string] Deferred.t
+    ticker : pair -> [`Ok of ticker | `Error of string] Deferred.t;
+    book : pair -> [`Ok of book_entry OrderBook.t | `Error of string] Deferred.t;
+    trades : ?since:int64 -> ?limit:int -> pair -> [`Ok of trade list | `Error of string] Deferred.t
   >
 
 let obj_of_name = function
@@ -32,7 +32,7 @@ let obj_of_name = function
 
 let run_tests e =
   let e = obj_of_name e in
-  let pair = "XBTUSD" in
+  let pair = `XBTUSD in
   ignore_log (e#name ^ "::ticker") (fun () -> e#ticker pair) >>= fun () ->
   ignore_log (e#name ^ "::book") (fun () -> e#book pair) >>= fun () ->
   ignore_log (e#name^ "::trades") (fun () -> e#trades pair) >>= fun () ->
