@@ -1,30 +1,34 @@
+open Rresult
 open Mt
 open Bittrex_intf
 
 module type JSONABLE = sig
-  type t
-  val to_yojson : t -> Yojson.Safe.json
-  val of_yojson : Yojson.Safe.json -> [`Ok of t | `Error of string]
+  type t [@@deriving yojson]
 end
 
 let yojson_of_string s =
-  CCError.guard_str (fun () -> Yojson.Safe.from_string s)
+  try Ok (Yojson.Safe.from_string s) with
+  | Yojson.Json_error str -> Error (`Json_error str)
 
 module Stringable = struct
   module Of_jsonable (T: JSONABLE) = struct
+    let of_yojson s = T.of_yojson s
+                      |> R.of_presult
+                      |> R.reword_error (function msg -> `Json_error msg)
+
     let to_string t = T.to_yojson t |> Yojson.Safe.to_string
     let pp ppf t = Format.fprintf ppf "%s" (to_string t)
-    let of_string s = CCError.flat_map T.of_yojson @@ yojson_of_string s
+    let of_string s = R.(yojson_of_string s >>= of_yojson)
     let ts_of_json = function
       | `List ts ->
         begin
           let ts = CCList.filter_map
-              (fun t -> match T.of_yojson t with
-                 | `Ok a -> Some a
-                 | `Error s -> None) ts
-          in `Ok ts
+              (fun t -> match of_yojson t with
+                 | Ok a -> Some a
+                 | Error _ -> None) ts
+          in Ok ts
         end
-      | json -> `Error (Yojson.Safe.to_string json)
+      | json -> Error (`Json_error (Yojson.Safe.to_string json))
   end
 end
 
@@ -82,8 +86,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
   let trade_increment = 1
   let get endpoint params yojson_to_a =
-    get endpoint params >>|
-    CCError.(flat_map (fun s -> flat_map yojson_to_a (yojson_of_string s)))
+    get endpoint params >>| fun s ->
+    R.(s >>= yojson_of_string >>= yojson_to_a)
 
   let string_of_pair = function
     | `XBTUSD -> "BTCUSD"
@@ -95,17 +99,20 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | _ -> None
 
   module Ticker = struct
-    type t = {
-      mid: string;
-      bid: string;
-      ask: string;
-      last_price: string;
-      low: string;
-      high: string;
-      volume: string;
-      timestamp: string;
-    } [@@deriving yojson]
-
+    module T = struct
+      type t = {
+        mid: string;
+        bid: string;
+        ask: string;
+        last_price: string;
+        low: string;
+        high: string;
+        volume: string;
+        timestamp: string;
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
     let ticker p = get ("pubticker/" ^ string_of_pair p) [] of_yojson
   end
 
@@ -121,21 +128,25 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let volume = satoshis_of_string_exn r.volume in
       let ts = Int64.of_string String.(sub r.timestamp 0 10 ^ sub r.timestamp 11 6) in
       new Mt.Ticker.tvwap ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts in
-    ticker p >>| CCError.map of_raw
+    ticker p >>| fun t -> R.map t of_raw
 
   module OrderBook = struct
-    type 'a book = {
-      bids: 'a list;
-      asks: 'a list;
-    } [@@deriving yojson]
+    module T = struct
+      type 'a book = {
+        bids: 'a list;
+        asks: 'a list;
+      } [@@deriving yojson]
 
-    type order = {
-      price: string;
-      amount: string;
-      timestamp: string;
-    } [@@deriving yojson]
+      type order = {
+        price: string;
+        amount: string;
+        timestamp: string;
+      } [@@deriving yojson]
 
-    type t = order book [@@deriving yojson]
+      type t = order book [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
 
     let book p = get ("book/" ^ string_of_pair p) [] of_yojson
   end
@@ -150,7 +161,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         ~bids:(List.map of_raw bids)
         ~asks:(List.map of_raw asks) ()
     in
-    book p >>= fun p -> return @@ CCError.map of_raw p
+    book p >>| fun b -> R.map b of_raw
 
   module Trade = struct
     module T = struct
@@ -189,310 +200,309 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
   let trades ?since ?limit p =
     let open Trade in
-    trades ?since ?limit p >>= fun p ->
-    return @@ CCError.map (List.map of_raw) p
+    trades ?since ?limit p >>| fun p ->
+    R.map p (List.map of_raw)
 
 end
 
+(* module Bittrex (H: HTTP_CLIENT) = struct *)
+(*   open H *)
 
-module Bittrex (H: HTTP_CLIENT) = struct
-  open H
+(*   type 'a error_monad = { *)
+(*     success: bool; *)
+(*     message: string; *)
+(*     result: 'a option; *)
+(*   } [@@deriving show,yojson] *)
 
-  type 'a error_monad = {
-    success: bool;
-    message: string;
-    result: 'a option;
-  } [@@deriving show,yojson]
+(*   let get endpoint params yojson_to_a = *)
+(*     let handle_err s = *)
+(*       yojson_of_string s |> *)
+(*       CCError.flat_map (error_monad_of_yojson yojson_to_a) |> *)
+(*       CCError.flat_map *)
+(*         (function | { success = true; result = Some r } -> `Ok r *)
+(*                   | { success = false; message } -> `Error message *)
+(*                   | _ -> `Error "success=true but result=None") *)
+(*     in *)
+(*     get endpoint params >>| CCError.flat_map handle_err *)
 
-  let get endpoint params yojson_to_a =
-    let handle_err s =
-      yojson_of_string s |>
-      CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
-      CCError.flat_map
-        (function | { success = true; result = Some r } -> `Ok r
-                  | { success = false; message } -> `Error message
-                  | _ -> `Error "success=true but result=None")
-    in
-    get endpoint params >>| CCError.flat_map handle_err
+(*   type supported_curr = [`XBT | `LTC | `DOGE] *)
 
-  type supported_curr = [`XBT | `LTC | `DOGE]
+(*   let string_of_curr = function *)
+(*     | `XBT -> "BTC" *)
+(*     | `LTC -> "LTC" *)
+(*     | `DOGE -> "DOGE" *)
 
-  let string_of_curr = function
-    | `XBT -> "BTC"
-    | `LTC -> "LTC"
-    | `DOGE -> "DOGE"
+(*   module Market = struct *)
+(*     module Raw = struct *)
+(*       module T = struct *)
+(*         type t = { *)
+(*           market_currency [@key "MarketCurrency"]: string; *)
+(*           base_currency [@key "BaseCurrency"] : string; *)
+(*           market_currency_long [@key "MarketCurrencyLong"] : string; *)
+(*           base_currency_long [@key "BaseCurrencyLong"] : string; *)
+(*           min_trade_size [@key "MinTradeSize"] : float; *)
+(*           market_name [@key "MarketName"] : string; *)
+(*           is_active [@key "IsActive"] : bool; *)
+(*           created [@key "Created"] : string; *)
+(*           notice [@key "Notice"] : string option; *)
+(*           is_sponsored [@key "IsSponsored"] : bool option; *)
+(*           logo_url [@key "LogoUrl"] : string option; *)
+(*         } [@@deriving show,yojson] *)
+(*       end *)
 
-  module Market = struct
-    module Raw = struct
-      module T = struct
-        type t = {
-          market_currency [@key "MarketCurrency"]: string;
-          base_currency [@key "BaseCurrency"] : string;
-          market_currency_long [@key "MarketCurrencyLong"] : string;
-          base_currency_long [@key "BaseCurrencyLong"] : string;
-          min_trade_size [@key "MinTradeSize"] : float;
-          market_name [@key "MarketName"] : string;
-          is_active [@key "IsActive"] : bool;
-          created [@key "Created"] : string;
-          notice [@key "Notice"] : string option;
-          is_sponsored [@key "IsSponsored"] : bool option;
-          logo_url [@key "LogoUrl"] : string option;
-        } [@@deriving show,yojson]
-      end
+(*       include T *)
+(*       include Stringable.Of_jsonable(T) *)
 
-      include T
-      include Stringable.Of_jsonable(T)
+(*       let markets () = get "public/getmarkets" [] ts_of_json *)
+(*     end *)
+(*     include Raw *)
+(*   end *)
 
-      let markets () = get "public/getmarkets" [] ts_of_json
-    end
-    include Raw
-  end
+(*   module MarketSummary = struct *)
+(*     module Raw = struct *)
+(*       module T = struct *)
+(*         type t = { *)
+(*           market_name [@key "MarketName"]: string; *)
+(*           high [@key "High"]: float; *)
+(*           low [@key "Low"]: float; *)
+(*           volume [@key "Volume"]: float; *)
+(*           last [@key "Last"]: float; *)
+(*           base_volume [@key "BaseVolume"]: float; *)
+(*           timestamp [@key "TimeStamp"]: string; *)
+(*           bid [@key "Bid"]: float; *)
+(*           ask [@key "Ask"]: float; *)
+(*           open_buy_orders [@key "OpenBuyOrders"]: int; *)
+(*           open_sell_orders [@key "OpenSellOrders"]: int; *)
+(*           prev_day [@key "PrevDay"]: float; *)
+(*           created [@key "Created"]: string; *)
+(*         } [@@deriving show,yojson] *)
+(*       end *)
 
-  module MarketSummary = struct
-    module Raw = struct
-      module T = struct
-        type t = {
-          market_name [@key "MarketName"]: string;
-          high [@key "High"]: float;
-          low [@key "Low"]: float;
-          volume [@key "Volume"]: float;
-          last [@key "Last"]: float;
-          base_volume [@key "BaseVolume"]: float;
-          timestamp [@key "TimeStamp"]: string;
-          bid [@key "Bid"]: float;
-          ask [@key "Ask"]: float;
-          open_buy_orders [@key "OpenBuyOrders"]: int;
-          open_sell_orders [@key "OpenSellOrders"]: int;
-          prev_day [@key "PrevDay"]: float;
-          created [@key "Created"]: string;
-        } [@@deriving show,yojson]
-      end
+(*       include T *)
+(*       include Stringable.Of_jsonable(T) *)
 
-      include T
-      include Stringable.Of_jsonable(T)
+(*       let summaries () = get "public/getmarketsummaries" [] ts_of_json *)
+(*       let summary pair = get "public/getmarketsummary" ["market", pair] ts_of_json *)
+(*     end *)
+(*     include Raw *)
+(*   end *)
 
-      let summaries () = get "public/getmarketsummaries" [] ts_of_json
-      let summary pair = get "public/getmarketsummary" ["market", pair] ts_of_json
-    end
-    include Raw
-  end
+(*   module Ticker = struct *)
+(*     module Raw = struct *)
+(*       type t = { *)
+(*         bid [@key "Bid"] : float; *)
+(*         ask [@key "Ask"] : float; *)
+(*         last [@key "Last"] : float; *)
+(*       } [@@deriving show,yojson] *)
 
-  module Ticker = struct
-    module Raw = struct
-      type t = {
-        bid [@key "Bid"] : float;
-        ask [@key "Ask"] : float;
-        last [@key "Last"] : float;
-      } [@@deriving show,yojson]
+(*       let ticker c1 c2 = get "public/getticker" *)
+(*           ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1] of_yojson *)
+(*     end *)
+(*     include Raw *)
+(*   end *)
 
-      let ticker c1 c2 = get "public/getticker"
-          ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1] of_yojson
-    end
-    include Raw
-  end
+(*   module Currency = struct *)
+(*     module T = struct *)
+(*       type t = { *)
+(*         currency [@key "Currency"] : string; *)
+(*         currency_long [@key "CurrencyLong"] : string; *)
+(*         min_confirmation [@key "MinConfirmation"] : int; *)
+(*         tx_fee [@key "TxFee"] : float; *)
+(*         is_active [@key "IsActive"] : bool; *)
+(*         coin_type [@key "CoinType"] : string; *)
+(*         base_addr [@key "BaseAddress"] : string option; *)
+(*         notice [@key "Notice"] : string option; *)
+(*       } [@@deriving show,yojson] *)
+(*     end *)
+(*     include T *)
+(*     include Stringable.Of_jsonable(T) *)
 
-  module Currency = struct
-    module T = struct
-      type t = {
-        currency [@key "Currency"] : string;
-        currency_long [@key "CurrencyLong"] : string;
-        min_confirmation [@key "MinConfirmation"] : int;
-        tx_fee [@key "TxFee"] : float;
-        is_active [@key "IsActive"] : bool;
-        coin_type [@key "CoinType"] : string;
-        base_addr [@key "BaseAddress"] : string option;
-        notice [@key "Notice"] : string option;
-      } [@@deriving show,yojson]
-    end
-    include T
-    include Stringable.Of_jsonable(T)
+(*     let currencies () = get "public/getcurrencies" [] ts_of_json *)
+(*   end *)
 
-    let currencies () = get "public/getcurrencies" [] ts_of_json
-  end
+(*   module OrderBook = struct *)
+(*     type order = { *)
+(*       price [@key "Rate"] : float; *)
+(*       qty [@key "Quantity"] : float; *)
+(*     } [@@deriving yojson] *)
 
-  module OrderBook = struct
-    type order = {
-      price [@key "Rate"] : float;
-      qty [@key "Quantity"] : float;
-    } [@@deriving yojson]
+(*     type book = { *)
+(*       buy: order list; *)
+(*       sell: order list *)
+(*     } [@@deriving yojson] *)
 
-    type book = {
-      buy: order list;
-      sell: order list
-    } [@@deriving yojson]
+(*     let book c1 c2 = get "public/getorderbook" *)
+(*         ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1; *)
+(*          "type", "both"; "depth", "50"] book_of_yojson *)
 
-    let book c1 c2 = get "public/getorderbook"
-        ["market", string_of_curr c2 ^ "-" ^ string_of_curr c1;
-         "type", "both"; "depth", "50"] book_of_yojson
+(*     let of_raw t = *)
+(*       Mt.OrderBook.create *)
+(*         ~bids:(List.map (fun { price; qty; } -> *)
+(*             let p = satoshis_of_float_exn price in *)
+(*             let v = satoshis_of_float_exn qty in *)
+(*             new Tick.t ~p ~v) t.buy) *)
+(*         ~asks:(List.map (fun { price; qty; } -> *)
+(*             let p = satoshis_of_float_exn price in *)
+(*             let v = satoshis_of_float_exn qty in *)
+(*             new Tick.t ~p ~v) t.sell) () *)
+(*   end *)
 
-    let of_raw t =
-      Mt.OrderBook.create
-        ~bids:(List.map (fun { price; qty; } ->
-            let p = satoshis_of_float_exn price in
-            let v = satoshis_of_float_exn qty in
-            new Tick.t ~p ~v) t.buy)
-        ~asks:(List.map (fun { price; qty; } ->
-            let p = satoshis_of_float_exn price in
-            let v = satoshis_of_float_exn qty in
-            new Tick.t ~p ~v) t.sell) ()
-  end
+(*   let book c1 c2 = OrderBook.(book c1 c2 >>| CCError.map of_raw) *)
+(* end *)
 
-  let book c1 c2 = OrderBook.(book c1 c2 >>| CCError.map of_raw)
-end
+(* module Cryptsy (H: HTTP_CLIENT) = struct *)
+(*   open H *)
 
-module Cryptsy (H: HTTP_CLIENT) = struct
-  open H
+(*   type 'a error_monad = { *)
+(*     success: bool; *)
+(*     error: string [@default ""]; *)
+(*     data: 'a option; *)
+(*   } [@@deriving show,yojson] *)
 
-  type 'a error_monad = {
-    success: bool;
-    error: string [@default ""];
-    data: 'a option;
-  } [@@deriving show,yojson]
+(*   let get endpoint params yojson_to_a = *)
+(*     let handle_err s = *)
+(*       yojson_of_string s |> *)
+(*       CCError.flat_map (error_monad_of_yojson yojson_to_a) |> *)
+(*       CCError.flat_map *)
+(*         (function | { success = true; data = Some r } -> `Ok r *)
+(*                   | { success = false; error } -> `Error error *)
+(*                   | _ -> `Error "success=true but data=None") *)
+(*     in get endpoint params >>| CCError.flat_map handle_err *)
 
-  let get endpoint params yojson_to_a =
-    let handle_err s =
-      yojson_of_string s |>
-      CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
-      CCError.flat_map
-        (function | { success = true; data = Some r } -> `Ok r
-                  | { success = false; error } -> `Error error
-                  | _ -> `Error "success=true but data=None")
-    in get endpoint params >>| CCError.flat_map handle_err
+(*   type supported_curr = [`XBT | `LTC | `DOGE] *)
 
-  type supported_curr = [`XBT | `LTC | `DOGE]
+(*   module Currency = struct *)
+(*     module Raw = struct *)
+(*       module T = struct *)
+(*         type t = { *)
+(*           id: string; *)
+(*           name: string; *)
+(*           code: string; *)
+(*           maintenance: string; *)
+(*         } [@@deriving show,yojson] *)
+(*       end *)
+(*       include T *)
+(*       include Stringable.Of_jsonable(T) *)
 
-  module Currency = struct
-    module Raw = struct
-      module T = struct
-        type t = {
-          id: string;
-          name: string;
-          code: string;
-          maintenance: string;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
+(*       let currencies () = get "currencies" [] ts_of_json *)
+(*     end *)
 
-      let currencies () = get "currencies" [] ts_of_json
-    end
+(*     type t = { *)
+(*       id: int; *)
+(*       name: string; *)
+(*       code: string; *)
+(*       maintenance: int; *)
+(*     } [@@deriving show,yojson] *)
 
-    type t = {
-      id: int;
-      name: string;
-      code: string;
-      maintenance: int;
-    } [@@deriving show,yojson]
+(*     let of_raw r = { *)
+(*       id = int_of_string r.Raw.id; *)
+(*       name = r.Raw.name; *)
+(*       code = r.Raw.code; *)
+(*       maintenance = int_of_string r.Raw.maintenance; *)
+(*     } *)
 
-    let of_raw r = {
-      id = int_of_string r.Raw.id;
-      name = r.Raw.name;
-      code = r.Raw.code;
-      maintenance = int_of_string r.Raw.maintenance;
-    }
+(*     let currencies () = Raw.currencies () >>| CCError.map @@ List.map of_raw *)
+(*   end *)
 
-    let currencies () = Raw.currencies () >>| CCError.map @@ List.map of_raw
-  end
+(*   module Market = struct *)
 
-  module Market = struct
+(*     type stats = { *)
+(*       volume: float; *)
+(*       volume_btc: float; *)
+(*       price_high: float; *)
+(*       price_low: float; *)
+(*     } [@@deriving show,yojson] *)
 
-    type stats = {
-      volume: float;
-      volume_btc: float;
-      price_high: float;
-      price_low: float;
-    } [@@deriving show,yojson]
+(*     type last_trade = { *)
+(*       price: float; *)
+(*       date: string; *)
+(*       timestamp: int; *)
+(*     } [@@deriving show,yojson] *)
 
-    type last_trade = {
-      price: float;
-      date: string;
-      timestamp: int;
-    } [@@deriving show,yojson]
+(*     module Raw = struct *)
+(*       module T = struct *)
+(*         type t = { *)
+(*           id: string; *)
+(*           label: string; *)
+(*           coin_currency_id: string; *)
+(*           market_currency_id: string; *)
+(*           maintenance_mode: string; *)
+(*           verifiedonly: bool; *)
+(*           stats [@key "24hr"] : stats; *)
+(*           last_trade: last_trade; *)
+(*         } [@@deriving show,yojson] *)
+(*       end *)
+(*       include T *)
+(*       include Stringable.Of_jsonable(T) *)
 
-    module Raw = struct
-      module T = struct
-        type t = {
-          id: string;
-          label: string;
-          coin_currency_id: string;
-          market_currency_id: string;
-          maintenance_mode: string;
-          verifiedonly: bool;
-          stats [@key "24hr"] : stats;
-          last_trade: last_trade;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
+(*       let markets () = get "markets" [] ts_of_json *)
+(*     end *)
 
-      let markets () = get "markets" [] ts_of_json
-    end
+(*     type t = { *)
+(*       id: int; *)
+(*       label: string; *)
+(*       coin_currency_id: int; *)
+(*       market_currency_id: int; *)
+(*       maintenance_mode: int; *)
+(*       verifiedonly: bool; *)
+(*       stats : stats; *)
+(*       last_trade: last_trade; *)
+(*     } [@@deriving show,yojson] *)
 
-    type t = {
-      id: int;
-      label: string;
-      coin_currency_id: int;
-      market_currency_id: int;
-      maintenance_mode: int;
-      verifiedonly: bool;
-      stats : stats;
-      last_trade: last_trade;
-    } [@@deriving show,yojson]
+(*     let of_raw t = { *)
+(*       id = int_of_string t.Raw.id; *)
+(*       label = t.Raw.label; *)
+(*       coin_currency_id = int_of_string t.Raw.coin_currency_id; *)
+(*       market_currency_id = int_of_string t.Raw.market_currency_id; *)
+(*       maintenance_mode = int_of_string t.Raw.maintenance_mode; *)
+(*       verifiedonly = t.Raw.verifiedonly; *)
+(*       stats = t.Raw.stats; *)
+(*       last_trade = t.Raw.last_trade; *)
+(*     } *)
 
-    let of_raw t = {
-      id = int_of_string t.Raw.id;
-      label = t.Raw.label;
-      coin_currency_id = int_of_string t.Raw.coin_currency_id;
-      market_currency_id = int_of_string t.Raw.market_currency_id;
-      maintenance_mode = int_of_string t.Raw.maintenance_mode;
-      verifiedonly = t.Raw.verifiedonly;
-      stats = t.Raw.stats;
-      last_trade = t.Raw.last_trade;
-    }
+(*     let markets () = Raw.markets () >>| CCError.map @@ List.map of_raw *)
+(*   end *)
 
-    let markets () = Raw.markets () >>| CCError.map @@ List.map of_raw
-  end
+(*   module Ticker = struct *)
+(*     module Raw = struct *)
+(*       module T = struct *)
+(*         type t = { *)
+(*           id: string; *)
+(*           bid: float; *)
+(*           ask: float; *)
+(*         } [@@deriving show,yojson] *)
+(*       end *)
+(*       include T *)
+(*       include Stringable.Of_jsonable(T) *)
 
-  module Ticker = struct
-    module Raw = struct
-      module T = struct
-        type t = {
-          id: string;
-          bid: float;
-          ask: float;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
+(*       let string_of_curr = function *)
+(*         | `XBT -> "btc" *)
+(*         | `LTC -> "ltc" *)
+(*         | `DOGE -> "doge" *)
 
-      let string_of_curr = function
-        | `XBT -> "btc"
-        | `LTC -> "ltc"
-        | `DOGE -> "doge"
+(*       let ticker c1 c2 = get *)
+(*           ("markets/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2 ^ "/ticker") *)
+(*           [] of_yojson *)
 
-      let ticker c1 c2 = get
-          ("markets/" ^ string_of_curr c1 ^ "_" ^ string_of_curr c2 ^ "/ticker")
-          [] of_yojson
+(*       let tickers () = get "markets/ticker" [] ts_of_json *)
+(*     end *)
 
-      let tickers () = get "markets/ticker" [] ts_of_json
-    end
+(*     type t = { *)
+(*       id: int; *)
+(*       bid: float; *)
+(*       ask: float; *)
+(*     } [@@deriving show,yojson] *)
 
-    type t = {
-      id: int;
-      bid: float;
-      ask: float;
-    } [@@deriving show,yojson]
+(*     let of_raw t = { *)
+(*       id = int_of_string t.Raw.id; *)
+(*       bid = t.Raw.bid; *)
+(*       ask = t.Raw.ask; *)
+(*     } *)
 
-    let of_raw t = {
-      id = int_of_string t.Raw.id;
-      bid = t.Raw.bid;
-      ask = t.Raw.ask;
-    }
-
-    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
-    let tickers () = Raw.tickers () >>| CCError.map @@ List.map of_raw
-  end
-end
+(*     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw *)
+(*     let tickers () = Raw.tickers () >>| CCError.map @@ List.map of_raw *)
+(*   end *)
+(* end *)
 
 module BTCE (H: HTTP_CLIENT) = struct
   include H
@@ -504,12 +514,12 @@ module BTCE (H: HTTP_CLIENT) = struct
 
   let get endpoint params yojson_to_a =
     let handle_err s =
-      yojson_of_string s |> CCError.flat_map
-        (function
-          | `Assoc [(_, ret)] -> yojson_to_a ret
-          | _ -> `Error s)
+      R.(yojson_of_string s >>= function
+        | `Assoc [(_, ret)] -> yojson_to_a ret
+        | _ -> Error (`Json_error s)
+        )
     in
-    get endpoint params >>| CCError.flat_map handle_err
+    get endpoint params >>| fun s -> R.(s >>= handle_err)
 
   type pair = [`XBTUSD | `LTCXBT]
   let pairs = [`XBTUSD; `LTCXBT]
@@ -529,17 +539,21 @@ module BTCE (H: HTTP_CLIENT) = struct
     | _ -> None
 
   module Ticker = struct
-    type t = {
-      high: float;
-      low: float;
-      avg: float;
-      vol: float;
-      vol_cur: float;
-      last: float;
-      buy: float;
-      sell: float;
-      updated: int;
-    } [@@deriving yojson]
+    module T = struct
+      type t = {
+        high: float;
+        low: float;
+        avg: float;
+        vol: float;
+        vol_cur: float;
+        last: float;
+        buy: float;
+        sell: float;
+        updated: int;
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
 
     let ticker p = get ("ticker/" ^ string_of_pair p) [] of_yojson
 
@@ -555,19 +569,22 @@ module BTCE (H: HTTP_CLIENT) = struct
         ~ts:Int64.(1_000_000L * of_int t.updated)
   end
   let ticker p =
-    Ticker.(ticker p >>= fun t -> return @@ CCError.map of_raw t)
+    Ticker.(ticker p >>| fun t -> R.map t of_raw)
 
   module OrderBook = struct
-    type t = {
-      asks: float list list;
-      bids: float list list
-    } [@@deriving yojson]
+    module T = struct
+      type t = {
+        asks: float list list;
+        bids: float list list
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
   end
 
   let book p =
     let open OrderBook in
     get ("depth/" ^ string_of_pair p) [] of_yojson >>|
-    CCError.flat_map
       (fun t ->
          let f t =
            Mt.OrderBook.create
@@ -586,8 +603,8 @@ module BTCE (H: HTTP_CLIENT) = struct
                  | _ -> raise Exit)
                  t.asks) ()
          in
-         try `Ok (f t)
-         with Exit -> `Error "book"
+         try R.(t >>| f)
+         with Exit -> R.error @@ `Json_error "book"
       )
 
   module Trade = struct
@@ -608,107 +625,110 @@ module BTCE (H: HTTP_CLIENT) = struct
 
   let trades ?since ?limit p =
     let open Trade in
-    trades p >>= fun trades ->
-    return @@ CCError.map (fun trades -> List.map (fun t ->
-        new Tick.tdts
-          ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
-          ~p:(satoshis_of_float_exn t.price)
-          ~v:(satoshis_of_float_exn t.amount)
-          ~d:(match t.type_ with
-              | "bid" -> `Bid
-              | "ask" -> `Ask
-              | _ -> `Unset)) trades)
-      trades
+    trades p >>| fun trades ->
+    R.(trades >>|
+       List.map (fun t ->
+           new Tick.tdts
+             ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
+             ~p:(satoshis_of_float_exn t.price)
+             ~v:(satoshis_of_float_exn t.amount)
+             ~d:(match t.type_ with
+                 | "bid" -> `Bid
+                 | "ask" -> `Ask
+                 | _ -> `Unset
+               )
+         )
+      )
 end
 
-module Poloniex (H: HTTP_CLIENT) = struct
-  open H
+(* module Poloniex (H: HTTP_CLIENT) = struct *)
+(*   open H *)
 
-  type supported_curr = [`XBT | `LTC | `DOGE]
+(*   type supported_curr = [`XBT | `LTC | `DOGE] *)
 
-  let string_of_curr = function
-    | `XBT -> "BTC"
-    | `LTC -> "LTC"
-    | `DOGE -> "DOGE"
+(*   let string_of_curr = function *)
+(*     | `XBT -> "BTC" *)
+(*     | `LTC -> "LTC" *)
+(*     | `DOGE -> "DOGE" *)
 
-  module Ticker = struct
-    let get c1 c2 params yojson_to_a =
-      let handle_err s =
-        let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
-        yojson_of_string s |> CCError.flat_map
-          (function
-            | `Assoc l ->
-              (try
-                 let t = List.assoc curr_str l in yojson_to_a t
-               with Not_found -> `Error "Unknown currency")
-            | _ -> `Error s)
-      in
-      get "" params >>| CCError.flat_map handle_err
+(*   module Ticker = struct *)
+(*     let get c1 c2 params yojson_to_a = *)
+(*       let handle_err s = *)
+(*         let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in *)
+(*         yojson_of_string s |> CCError.flat_map *)
+(*           (function *)
+(*             | `Assoc l -> *)
+(*               (try *)
+(*                  let t = List.assoc curr_str l in yojson_to_a t *)
+(*                with Not_found -> `Error "Unknown currency") *)
+(*             | _ -> `Error s) *)
+(*       in *)
+(*       get "" params >>| CCError.flat_map handle_err *)
 
-    module Raw = struct
-      module T = struct
-        type t = {
-          last: string;
-          lowestAsk: string;
-          highestBid: string;
-          percentChange: string;
-          baseVolume: string;
-          quoteVolume: string;
-          isFrozen: string;
-          high24hr: string;
-          low24hr: string;
-        } [@@deriving show,yojson]
-      end
-      include T
-      include Stringable.Of_jsonable(T)
+(*     module Raw = struct *)
+(*       module T = struct *)
+(*         type t = { *)
+(*           last: string; *)
+(*           lowestAsk: string; *)
+(*           highestBid: string; *)
+(*           percentChange: string; *)
+(*           baseVolume: string; *)
+(*           quoteVolume: string; *)
+(*           isFrozen: string; *)
+(*           high24hr: string; *)
+(*           low24hr: string; *)
+(*         } [@@deriving show,yojson] *)
+(*       end *)
+(*       include T *)
+(*       include Stringable.Of_jsonable(T) *)
 
-      let ticker c1 c2 = get c1 c2 ["command", "returnTicker"] of_yojson
-    end
+(*       let ticker c1 c2 = get c1 c2 ["command", "returnTicker"] of_yojson *)
+(*     end *)
 
-    let of_raw t = new Mt.Ticker.t
-      ~ts:Oclock.(gettime realtime_coarse)
-      ~last:(satoshis_of_string_exn t.Raw.last)
-      ~bid:(satoshis_of_string_exn t.Raw.highestBid)
-      ~ask:(satoshis_of_string_exn t.Raw.lowestAsk)
-      ~volume:(satoshis_of_string_exn t.Raw.baseVolume)
-      ~high:(satoshis_of_string_exn t.Raw.high24hr)
-      ~low:(satoshis_of_string_exn t.Raw.low24hr)
+(*     let of_raw t = new Mt.Ticker.t *)
+(*       ~ts:Oclock.(gettime realtime_coarse) *)
+(*       ~last:(satoshis_of_string_exn t.Raw.last) *)
+(*       ~bid:(satoshis_of_string_exn t.Raw.highestBid) *)
+(*       ~ask:(satoshis_of_string_exn t.Raw.lowestAsk) *)
+(*       ~volume:(satoshis_of_string_exn t.Raw.baseVolume) *)
+(*       ~high:(satoshis_of_string_exn t.Raw.high24hr) *)
+(*       ~low:(satoshis_of_string_exn t.Raw.low24hr) *)
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
-  end
+(*     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw *)
+(*   end *)
 
-  module OrderBook = struct
-    let book c1 c2 =
-      let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in
+(*   module OrderBook = struct *)
+(*     let book c1 c2 = *)
+(*       let curr_str = string_of_curr c2 ^ "_" ^ string_of_curr c1 in *)
 
-      let handle_err s =
-        let parse =
-          let mapf = function
-            | `List [`String p; `Float v] ->
-              new Tick.t
-                ~p:(satoshis_of_string_exn p)
-                ~v:(satoshis_of_float_exn v)
-            | `List [`String p; `Int v] ->
-              new Tick.t
-                ~p:(satoshis_of_string_exn p)
-                ~v:Int64.(10_000_000L * of_int v)
-            | json -> invalid_arg @@ Yojson.Safe.to_string json in
-          List.map mapf in
-        yojson_of_string s |> CCError.flat_map
-          (function
-            | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] ->
-              if frz <> "0"
-              then `Ok (Mt.OrderBook.create ())
-              else
-                let f () = Mt.OrderBook.create ~asks:(parse asks) ~bids:(parse bids) ()
-                in
-                (try `Ok (f ()) with Invalid_argument str -> `Error str)
-            | json -> `Error (Yojson.Safe.to_string json))
-      in
-      get "" ["command", "returnOrderBook";
-              "currencyPair", curr_str] >>| CCError.flat_map handle_err
-  end
-end
+(*       let handle_err s = *)
+(*         let parse = *)
+(*           let mapf = function *)
+(*             | `List [`String p; `Float v] -> *)
+(*               new Tick.t *)
+(*                 ~p:(satoshis_of_string_exn p) *)
+(*                 ~v:(satoshis_of_float_exn v) *)
+(*             | `List [`String p; `Int v] -> *)
+(*               new Tick.t *)
+(*                 ~p:(satoshis_of_string_exn p) *)
+(*                 ~v:Int64.(10_000_000L * of_int v) *)
+(*             | json -> invalid_arg @@ Yojson.Safe.to_string json in *)
+(*           List.map mapf in *)
+(*         yojson_of_string s |> CCError.flat_map *)
+(*           (function *)
+(*             | `Assoc ["asks", `List asks; "bids", `List bids; "isFrozen", `String frz] -> *)
+(*               if frz <> "0" *)
+(*               then `Ok (Mt.OrderBook.create ()) *)
+(*               else *)
+(*                 let f () = Mt.OrderBook.create ~asks:(parse asks) ~bids:(parse bids) () *)
+(*                 in *)
+(*                 (try `Ok (f ()) with Invalid_argument str -> `Error str) *)
+(*             | json -> `Error (Yojson.Safe.to_string json)) *)
+(*       in *)
+(*       get "" ["command", "returnOrderBook"; *)
+(*               "currencyPair", curr_str] >>| CCError.flat_map handle_err *)
+(*   end *)
+(* end *)
 
 module Kraken (H: HTTP_CLIENT) = struct
   include H
@@ -738,17 +758,20 @@ module Kraken (H: HTTP_CLIENT) = struct
     result: 'a option [@default None];
   } [@@deriving yojson]
 
+  let error_of_error_monad e =
+    match e.result with
+    | None -> exchange_error @@ String.concat " " e.error
+    | Some res -> R.ok res
+
   let get endpoint params yojson_to_a =
     let handle_err s =
-      yojson_of_string s |>
-      CCError.flat_map (error_monad_of_yojson yojson_to_a) |>
-      CCError.flat_map
-        (function
-          | { error = []; result = Some r } -> `Ok r
-          | { error; result = None } -> `Error (String.concat " " error)
-          | _ -> `Error "internal error")
+      let open R in
+      yojson_of_string s >>=
+      (fun json -> R.(reword_error (fun str -> `Json_error str)
+                        @@ of_presult (error_monad_of_yojson yojson_to_a json))) >>=
+      error_of_error_monad
     in
-    get endpoint params >>| CCError.flat_map handle_err
+    get endpoint params >>| fun s -> R.(s >>= handle_err)
 
   module Ticker = struct
     type t = {
@@ -778,7 +801,7 @@ module Kraken (H: HTTP_CLIENT) = struct
       ~high:(satoshis_of_string_exn @@ List.nth t.h 1)
   end
 
-  let ticker p = Ticker.(ticker p >>| CCError.map of_raw)
+  let ticker p = Ticker.(ticker p >>| fun t -> R.map t of_raw)
 
   let book p =
     let lift_f = function
@@ -845,84 +868,84 @@ module Kraken (H: HTTP_CLIENT) = struct
                 | json -> `Error (Yojson.Safe.to_string json))
 end
 
-module Hitbtc (H: HTTP_CLIENT) = struct
-  open H
+(* module Hitbtc (H: HTTP_CLIENT) = struct *)
+(*   open H *)
 
-  let get endpoint params yojson_to_a =
-    let handle_err s =
-      CCError.flat_map yojson_to_a @@ yojson_of_string s in
-    get endpoint params >>| CCError.flat_map handle_err
+(*   let get endpoint params yojson_to_a = *)
+(*     let handle_err s = *)
+(*       CCError.flat_map yojson_to_a @@ yojson_of_string s in *)
+(*     get endpoint params >>| CCError.flat_map handle_err *)
 
-  type supported_curr = [`XBT | `LTC | `DOGE]
+(*   type supported_curr = [`XBT | `LTC | `DOGE] *)
 
-  let string_of_curr = function
-    | `XBT -> "BTC"
-    | `LTC -> "LTC"
-    | `DOGE -> "DOGE"
+(*   let string_of_curr = function *)
+(*     | `XBT -> "BTC" *)
+(*     | `LTC -> "LTC" *)
+(*     | `DOGE -> "DOGE" *)
 
-  module Ticker = struct
-    module Raw = struct
-      type t = {
-        ask: string;
-        bid: string;
-        last: string;
-        low: string;
-        high: string;
-        o [@key "open"]: string;
-        volume: string;
-        volume_quote: string;
-        timestamp: int;
-      } [@@deriving yojson]
+(*   module Ticker = struct *)
+(*     module Raw = struct *)
+(*       type t = { *)
+(*         ask: string; *)
+(*         bid: string; *)
+(*         last: string; *)
+(*         low: string; *)
+(*         high: string; *)
+(*         o [@key "open"]: string; *)
+(*         volume: string; *)
+(*         volume_quote: string; *)
+(*         timestamp: int; *)
+(*       } [@@deriving yojson] *)
 
-      let ticker c1 c2 =
-        get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/ticker") []
-          of_yojson
-    end
+(*       let ticker c1 c2 = *)
+(*         get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/ticker") [] *)
+(*           of_yojson *)
+(*     end *)
 
-    let of_raw t = new Mt.Ticker.t
-      ~ask:(satoshis_of_string_exn t.Raw.ask)
-      ~bid:(satoshis_of_string_exn t.Raw.bid)
-      ~last:(satoshis_of_string_exn t.Raw.last)
-      ~low:(satoshis_of_string_exn t.Raw.low)
-      ~high:(satoshis_of_string_exn t.Raw.high)
-      ~volume:(satoshis_of_string_exn t.Raw.volume)
-      ~ts:Int64.(1000L * of_int t.Raw.timestamp)
+(*     let of_raw t = new Mt.Ticker.t *)
+(*       ~ask:(satoshis_of_string_exn t.Raw.ask) *)
+(*       ~bid:(satoshis_of_string_exn t.Raw.bid) *)
+(*       ~last:(satoshis_of_string_exn t.Raw.last) *)
+(*       ~low:(satoshis_of_string_exn t.Raw.low) *)
+(*       ~high:(satoshis_of_string_exn t.Raw.high) *)
+(*       ~volume:(satoshis_of_string_exn t.Raw.volume) *)
+(*       ~ts:Int64.(1000L * of_int t.Raw.timestamp) *)
 
-    let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw
-  end
+(*     let ticker c1 c2 = Raw.ticker c1 c2 >>| CCError.map of_raw *)
+(*   end *)
 
-  module OrderBook = struct
-    module Raw = struct
+(*   module OrderBook = struct *)
+(*     module Raw = struct *)
 
-      type t = {
-        asks: string list list;
-        bids: string list list;
-      } [@@deriving yojson]
+(*       type t = { *)
+(*         asks: string list list; *)
+(*         bids: string list list; *)
+(*       } [@@deriving yojson] *)
 
-      let book c1 c2 =
-        get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/orderbook") []
-          of_yojson
-    end
+(*       let book c1 c2 = *)
+(*         get ("public/" ^ string_of_curr c1 ^ string_of_curr c2 ^ "/orderbook") [] *)
+(*           of_yojson *)
+(*     end *)
 
-    let of_raw t =
-      let f t =
-       Mt.OrderBook.create
-          ~bids:(List.map (function
-              | [p; v] ->
-                new Tick.t
-                  ~p:(satoshis_of_string_exn p)
-                  ~v:(satoshis_of_string_exn v)
-              | _ -> raise Exit
-            ) t.Raw.bids)
-          ~asks:(List.map (function
-              | [p; v] ->
-                new Tick.t
-                  ~p:(satoshis_of_string_exn p)
-                  ~v:(satoshis_of_string_exn v)
-              | _ -> raise Exit
-            ) t.Raw.asks) ()
-      in try `Ok (f t) with Exit -> `Error "of_raw"
+(*     let of_raw t = *)
+(*       let f t = *)
+(*        Mt.OrderBook.create *)
+(*           ~bids:(List.map (function *)
+(*               | [p; v] -> *)
+(*                 new Tick.t *)
+(*                   ~p:(satoshis_of_string_exn p) *)
+(*                   ~v:(satoshis_of_string_exn v) *)
+(*               | _ -> raise Exit *)
+(*             ) t.Raw.bids) *)
+(*           ~asks:(List.map (function *)
+(*               | [p; v] -> *)
+(*                 new Tick.t *)
+(*                   ~p:(satoshis_of_string_exn p) *)
+(*                   ~v:(satoshis_of_string_exn v) *)
+(*               | _ -> raise Exit *)
+(*             ) t.Raw.asks) () *)
+(*       in try `Ok (f t) with Exit -> `Error "of_raw" *)
 
-    let book c1 c2 = Raw.book c1 c2 >>| CCError.map of_raw
-  end
-end
+(*     let book c1 c2 = Raw.book c1 c2 >>| CCError.map of_raw *)
+(*   end *)
+(* end *)

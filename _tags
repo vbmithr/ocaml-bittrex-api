@@ -8,6 +8,7 @@ true: debug, bin_annot, safe_string, short_paths
                           package(cohttp.async), \
                           package(mt), \
                           package(oclock), \
+                          package(rresult), \
                           thread
 
 <top/*.*>: package(compiler-libs.toplevel)

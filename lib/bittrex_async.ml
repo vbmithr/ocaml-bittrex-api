@@ -1,13 +1,15 @@
+open Rresult
 open Core.Std
 open Async.Std
 open Cohttp_async
 open Mt
+open Bittrex_intf
 open Bittrex
 
-let try_with_convert f =
+let trap_exn f =
   try_with f >>| function
-  | Ok r -> `Ok r
-  | Error exn -> `Error (Exn.to_string exn)
+  | Ok r -> Rresult.Ok r
+  | Error exn -> Rresult.Error (`Exn_trap (exn, Caml.Printexc.get_raw_backtrace ()))
 
 module AsyncIO = struct
   include Cohttp_async_io
@@ -27,7 +29,7 @@ module Bitfinex = struct
         let uri = mk_uri endpoint in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
   include Bitfinex(H)
 end
@@ -45,7 +47,7 @@ module BTCE = struct
         let uri = mk_uri endpoint in
         Client.get uri >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
   include BTCE(H)
 end
@@ -63,7 +65,7 @@ module Bittrex = struct
         let uri = mk_uri endpoint in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
 end
 
@@ -80,7 +82,7 @@ module Cryptsy = struct
         let uri = mk_uri endpoint in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
 end
 
@@ -94,7 +96,7 @@ module Poloniex = struct
       let f () =
         Client.get Uri.(with_query' (Uri.of_string base_uri) params) >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
 end
 
@@ -111,7 +113,7 @@ module Kraken = struct
         let uri = mk_uri endpoint in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
   include Kraken(H)
 end
@@ -129,7 +131,7 @@ module Hitbtc = struct
         let uri = mk_uri endpoint in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
-      try_with_convert f
+      trap_exn f
   end
 end
 
@@ -142,44 +144,44 @@ module Generic = struct
   let ticker c = function
     | `Bitfinex ->
       Bitfinex.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> ticker c)
     | `BTCE ->
       BTCE.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> ticker c)
     | `Kraken ->
       Kraken.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> ticker c)
 
   let book c = function
     | `Bitfinex ->
       Bitfinex.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> book c)
     | `BTCE ->
       BTCE.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> book c)
     | `Kraken ->
       (Kraken.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> book c)
-       :> (book_entry OrderBook.t, string) CCError.t Deferred.t)
+       :> (book_entry OrderBook.t, err) result Deferred.t)
 
   let trades ?since ?limit c = function
     | `Bitfinex ->
       Bitfinex.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> trades ?since ?limit c)
     | `BTCE ->
       BTCE.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> trades ?since ?limit c)
     | `Kraken ->
       (Kraken.(accept c |> function
-        | None -> return @@ `Error "unsupported"
+        | None -> return @@ internal_error "unsupported"
         | Some c -> trades ?since ?limit c)
-      :> (trade list, string) CCError.t Deferred.t)
+      :> (trade list, err) result Deferred.t)
 end

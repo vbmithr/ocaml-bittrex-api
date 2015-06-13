@@ -1,5 +1,6 @@
-open Bittrex_intf
 open Async.Std
+open Bittrex_intf
+
 
 (** Specific modules. *)
 

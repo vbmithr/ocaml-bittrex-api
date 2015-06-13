@@ -1,3 +1,4 @@
+open Rresult
 open Core.Std
 open Async.Std
 
@@ -8,8 +9,8 @@ let log = Log.create ~level:`Info ~output:[(Log.Output.stderr ())]
 
 let ignore_log label f =
   f () >>| function
-  | `Ok _ -> Log.info log "Checked %s OK" label
-  | `Error msg -> Log.info log "Checked %s ERROR: %s" label msg
+  | Rresult.Ok _ -> Log.info log "Checked %s OK" label
+  | Rresult.Error err -> Log.info log "Checked %s: %s" label Bittrex_intf.(show_err err)
 
 let exchanges_of_string s =
   let s = String.lowercase s in match s with
