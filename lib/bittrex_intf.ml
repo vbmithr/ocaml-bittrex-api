@@ -75,6 +75,9 @@ module type EXCHANGE = sig
   val accept : Symbol.t -> symbol option
   val symbols : symbol list
 
+  val price_increment : int (** minimum increment of price in satoshis *)
+  val trade_increment : int (** minimum tradable amount of satoshis *)
+
   val ticker : symbol -> (ticker, err) result t
 
   val book : symbol -> (book_entry OrderBook.t, err) result t
@@ -116,6 +119,9 @@ module type GENERIC = sig
   type ticker = (int64, int64) Ticker.tvwap
   type book_entry = int64 Mt.Tick.t
   type trade = (int64, int64) Mt.Tick.tdts
+
+  val price_increment : [< Exchange.t] -> int
+  val trade_increment : [< Exchange.t] -> int
 
   val symbols : [< Exchange.t] -> [> Symbol.t] list
   val ticker : symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->

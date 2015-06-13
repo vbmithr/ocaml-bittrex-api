@@ -147,6 +147,16 @@ module Generic = struct
     | `BTCE -> BTCE.symbols
     | `Kraken -> Kraken.symbols
 
+  let price_increment = function
+    | `Bitfinex -> Bitfinex.price_increment
+    | `BTCE -> BTCE.price_increment
+    | `Kraken -> Kraken.price_increment
+
+  let trade_increment = function
+    | `Bitfinex -> Bitfinex.trade_increment
+    | `BTCE -> BTCE.trade_increment
+    | `Kraken -> Kraken.trade_increment
+
   let ticker ~symbol ~exchange = match exchange with
     | `Bitfinex ->
       Bitfinex.(accept symbol |> function

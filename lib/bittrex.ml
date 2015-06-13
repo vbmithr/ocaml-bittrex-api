@@ -85,7 +85,9 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | `LTCUSD -> Some `LTCUSD
     | `LTCXBT -> Some `LTCXBT
 
+  let price_increment = 1_000_000
   let trade_increment = 1
+
   let get endpoint params yojson_to_a =
     get endpoint params >>| fun s ->
     R.(s >>= yojson_of_string >>= yojson_to_a)
@@ -509,17 +511,11 @@ module BTCE (H: HTTP_CLIENT) = struct
 
   let kind = `BTCE
 
-  let get endpoint params yojson_to_a =
-    let handle_err s =
-      R.(yojson_of_string s >>= function
-        | `Assoc [(_, ret)] -> yojson_to_a ret
-        | _ -> Error (`Json_error s)
-        )
-    in
-    get endpoint params >>| fun s -> R.(s >>= handle_err)
-
   type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
+
+  let price_increment = 100_000
+  let trade_increment = 1
 
   let accept = function
     | `XBTLTC -> None
@@ -531,6 +527,15 @@ module BTCE (H: HTTP_CLIENT) = struct
     | `XBTUSD -> "btc_usd"
     | `LTCUSD -> "ltc_usd"
     | `LTCXBT -> "ltc_btc"
+
+  let get endpoint params yojson_to_a =
+    let handle_err s =
+      R.(yojson_of_string s >>= function
+        | `Assoc [(_, ret)] -> yojson_to_a ret
+        | _ -> Error (`Json_error s)
+        )
+    in
+    get endpoint params >>| fun s -> R.(s >>= handle_err)
 
   module Ticker = struct
     module T = struct
@@ -732,6 +737,9 @@ module Kraken (H: HTTP_CLIENT) = struct
 
   let kind = `Kraken
   let symbols = [`XBTUSD; `LTCUSD; `XBTLTC]
+
+  let price_increment = 1_000
+  let trade_increment = 1
 
   let accept = function
     | `XBTLTC -> Some `XBTLTC
