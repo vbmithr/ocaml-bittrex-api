@@ -71,17 +71,18 @@ let timestamp_of_float_exn = int_of_float_mult_exn 6
 
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
-  type pair = [`XBTUSD | `LTCXBT]
+  type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
   type ticker = (int64, int64) Ticker.tvwap
   type book_entry = int64 Tick.t
   type trade = (int64, int64) Tick.tdts
 
-  let name = "BITFINEX"
-  let pairs = [`XBTUSD; `LTCXBT]
+  let kind = `Bitfinex
+  let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
 
   let accept = function
     | `XBTLTC -> None
     | `XBTUSD -> Some `XBTUSD
+    | `LTCUSD -> Some `LTCUSD
     | `LTCXBT -> Some `LTCXBT
 
   let trade_increment = 1
@@ -89,14 +90,10 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     get endpoint params >>| fun s ->
     R.(s >>= yojson_of_string >>= yojson_to_a)
 
-  let string_of_pair = function
+  let string_of_symbol = function
     | `XBTUSD -> "BTCUSD"
+    | `LTCUSD -> "LTCUSD"
     | `LTCXBT -> "LTCBTC"
-
-  let pair_of_string = function
-    | "XBTUSD" -> Some `XBTUSD
-    | "LTCXBT" -> Some `LTCXBT
-    | _ -> None
 
   module Ticker = struct
     module T = struct
@@ -113,7 +110,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     end
     include T
     include Stringable.Of_jsonable(T)
-    let ticker p = get ("pubticker/" ^ string_of_pair p) [] of_yojson
+    let ticker p = get ("pubticker/" ^ string_of_symbol p) [] of_yojson
   end
 
   let ticker p =
@@ -148,7 +145,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-    let book p = get ("book/" ^ string_of_pair p) [] of_yojson
+    let book p = get ("book/" ^ string_of_symbol p) [] of_yojson
   end
 
   let book p =
@@ -178,7 +175,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include Stringable.Of_jsonable(T)
 
     let trades ?(since = -1L) ?(limit = -1) p =
-      get ("trades/" ^ string_of_pair p)
+      get ("trades/" ^ string_of_symbol p)
         ((if since = -1L then []
           else ["timestamp", Int64.(to_string @@ since / 1_000_000_000L)])
          @ (if limit = -1 then []
@@ -282,7 +279,7 @@ end
 (*       include Stringable.Of_jsonable(T) *)
 
 (*       let summaries () = get "public/getmarketsummaries" [] ts_of_json *)
-(*       let summary pair = get "public/getmarketsummary" ["market", pair] ts_of_json *)
+(*       let summary symbol = get "public/getmarketsummary" ["market", symbol] ts_of_json *)
 (*     end *)
 (*     include Raw *)
 (*   end *)
@@ -510,7 +507,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   type book_entry = int64 Tick.t
   type trade = (int64, int64) Tick.tdts
 
-  let name = "BTCE"
+  let kind = `BTCE
 
   let get endpoint params yojson_to_a =
     let handle_err s =
@@ -521,22 +518,19 @@ module BTCE (H: HTTP_CLIENT) = struct
     in
     get endpoint params >>| fun s -> R.(s >>= handle_err)
 
-  type pair = [`XBTUSD | `LTCXBT]
-  let pairs = [`XBTUSD; `LTCXBT]
+  type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
+  let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
 
   let accept = function
     | `XBTLTC -> None
     | `XBTUSD -> Some `XBTUSD
+    | `LTCUSD -> Some `LTCUSD
     | `LTCXBT -> Some `LTCXBT
 
-  let string_of_pair = function
+  let string_of_symbol = function
     | `XBTUSD -> "btc_usd"
+    | `LTCUSD -> "ltc_usd"
     | `LTCXBT -> "ltc_btc"
-
-  let pair_of_string = function
-    | "XBTUSD" -> Some `XBTUSD
-    | "LTCXBT" -> Some `LTCXBT
-    | _ -> None
 
   module Ticker = struct
     module T = struct
@@ -555,7 +549,7 @@ module BTCE (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-    let ticker p = get ("ticker/" ^ string_of_pair p) [] of_yojson
+    let ticker p = get ("ticker/" ^ string_of_symbol p) [] of_yojson
 
     let of_raw t =
       new Ticker.tvwap
@@ -584,7 +578,7 @@ module BTCE (H: HTTP_CLIENT) = struct
 
   let book p =
     let open OrderBook in
-    get ("depth/" ^ string_of_pair p) [] of_yojson >>|
+    get ("depth/" ^ string_of_symbol p) [] of_yojson >>|
       (fun t ->
          let f t =
            Mt.OrderBook.create
@@ -620,7 +614,7 @@ module BTCE (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-    let trades p = get ("trades/" ^ string_of_pair p) [] ts_of_json
+    let trades p = get ("trades/" ^ string_of_symbol p) [] ts_of_json
   end
 
   let trades ?since ?limit p =
@@ -732,26 +726,23 @@ end
 
 module Kraken (H: HTTP_CLIENT) = struct
   include H
-  type pair = [`XBTUSD | `XBTLTC]
+  type symbol = [`XBTUSD | `LTCUSD | `XBTLTC]
   type ticker = (int64, int64) Ticker.tvwap
   type book_entry = (int64, int64) Tick.tts
 
-  let name = "KRAKEN"
-  let pairs = [`XBTUSD; `XBTLTC]
+  let kind = `Kraken
+  let symbols = [`XBTUSD; `LTCUSD; `XBTLTC]
 
   let accept = function
     | `XBTLTC -> Some `XBTLTC
     | `XBTUSD -> Some `XBTUSD
+    | `LTCUSD -> Some `LTCUSD
     | `LTCXBT -> None
 
-  let string_of_pair = function
+  let string_of_symbol = function
     | `XBTUSD -> "XXBTZUSD"
+    | `LTCUSD -> "XLTCZUSD"
     | `XBTLTC -> "XXBTXLTC"
-
-  let pair_of_string = function
-    | "XBTUSD" -> Some `XBTUSD
-    | "XBTLTC" -> Some `XBTLTC
-    | _ -> None
 
   type 'a error_monad = {
     error: string list;
@@ -786,7 +777,7 @@ module Kraken (H: HTTP_CLIENT) = struct
       o: string;
     } [@@deriving yojson]
 
-    let ticker p = get "public/Ticker" ["pair", string_of_pair p]
+    let ticker p = get "public/Ticker" ["pair", string_of_symbol p]
         (function | `Assoc [_, t] -> of_yojson t
                   | json -> `Error (Yojson.Safe.to_string json))
 
@@ -826,7 +817,7 @@ module Kraken (H: HTTP_CLIENT) = struct
         (try `Ok (f ()) with Exit -> `Error "book")
       | json -> `Error (Yojson.Safe.to_string json) in
 
-    get "public/Depth" ["pair", string_of_pair p]
+    get "public/Depth" ["pair", string_of_symbol p]
       (function | `Assoc [_, t] -> lift_f t
                 | json -> `Error (Yojson.Safe.to_string json))
 
@@ -862,7 +853,7 @@ module Kraken (H: HTTP_CLIENT) = struct
               ~m
             )
       | json -> `Error (Yojson.Safe.to_string json) in
-    get "public/Trades" (("pair", string_of_pair p) ::
+    get "public/Trades" (("pair", string_of_symbol p) ::
     (if since = -1L then [] else ["since", Int64.to_string since]))
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | json -> `Error (Yojson.Safe.to_string json))

@@ -24,29 +24,63 @@ module type HTTP_CLIENT = sig
   val get : string -> (string * string) list -> (string, err) result t
 end
 
-type exchanges = [`Bitfinex | `BTCE | `Kraken] [@@deriving show]
-type pairs = [`XBTUSD | `LTCXBT | `XBTLTC] [@@deriving show]
+module Exchange = struct
+  type t = [`Bitfinex | `BTCE | `Kraken] [@@deriving show, enum, eq, ord]
+
+  let to_string = function
+    | `Bitfinex -> "BITFINEX"
+    | `BTCE -> "BTCE"
+    | `Kraken -> "KRAKEN"
+
+  let of_string s = String.lowercase s |> function
+    | "bitfinex" | "`bitfinex" -> Some `Bitfinex
+    | "btce" | "`btce" -> Some `BTCE
+    | "kraken" | "`kraken" -> Some `Kraken
+    | _ -> None
+end
+
+module Symbol = struct
+  type t = [`XBTUSD | `LTCUSD | `LTCXBT | `XBTLTC] [@@deriving show, enum, eq, ord]
+
+  let to_string = function
+    | `XBTUSD -> "XBTUSD"
+    | `LTCUSD -> "LTCUSD"
+    | `LTCXBT -> "LTCXBT"
+    | `XBTLTC -> "XBTLTC"
+
+  let of_string s = String.lowercase s |> function
+    | "xbtusd" | "`xbtusd" | "btcusd" -> Some `XBTUSD
+    | "ltcusd" | "`ltcusd" -> Some `LTCUSD
+    | "ltcxbt" | "`ltcxbt" | "ltcbtc" -> Some `LTCXBT
+    | "xbtltc" | "`xbtltc" | "btcltc" -> Some `XBTLTC
+    | _ -> None
+
+  let descr = function
+    | `XBTUSD -> "Bitcoin / US Dollar"
+    | `LTCUSD -> "Litecoin / US Dollar"
+    | `LTCXBT -> "Litecoin / Bitcoin"
+    | `XBTLTC -> "Bitcoin / Litecoin"
+end
 
 (** Abstract exchange type. *)
 
 module type EXCHANGE = sig
   include IO
-  type pair
+  type symbol
   type ticker
   type book_entry
   type trade
 
-  val name : string
-  val accept :pairs -> pair option
-  val pairs : pair list
-  val pair_of_string : string -> pair option
+  val kind : Exchange.t
+  val accept : Symbol.t -> symbol option
+  val symbols : symbol list
 
-  val ticker : pair -> (ticker, err) result t
+  val ticker : symbol -> (ticker, err) result t
 
-  val book : pair ->    (book_entry OrderBook.t, err) result t
+  val book : symbol -> (book_entry OrderBook.t, err) result t
 
-  val trades : ?since:int64 -> ?limit:int -> pair ->  (trade list, err) result t
-    (** [trades ?since ?limit pair] is a thread that returns a list of
+  val trades : ?since:int64 -> ?limit:int -> symbol ->  (trade list, err) result t
+    (** [trades ?since ?limit symbol] is a thread that returns a list of
         trades contained in an error monad. If the underlying exchange
         supports it, the list will be limited to [limit] entries, and
         will not contain trades older than [since], where [since] is
@@ -56,19 +90,19 @@ end
 (** Concrete exchange types. *)
 
 module type BITFINEX = EXCHANGE
-  with type pair = [`XBTUSD | `LTCXBT]
+  with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
    and type ticker = (int64, int64) Ticker.tvwap
    and type book_entry = int64 Mt.Tick.t
    and type trade = (int64, int64) Mt.Tick.tdts
 
 module type BTCE = EXCHANGE
-  with type pair = [`XBTUSD | `LTCXBT]
+  with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
    and type ticker = (int64, int64) Ticker.tvwap
    and type book_entry = int64 Tick.t
    and type trade = (int64, int64) Mt.Tick.tdts
 
 module type KRAKEN = EXCHANGE
-  with type pair = [`XBTUSD | `XBTLTC]
+  with type symbol = [`XBTUSD | `LTCUSD | `XBTLTC]
    and type ticker = (int64, int64) Ticker.tvwap
    and type book_entry = (int64, int64) Tick.tts
    and type trade = < d : [ `Ask | `Bid | `Unset ];
@@ -83,8 +117,11 @@ module type GENERIC = sig
   type book_entry = int64 Mt.Tick.t
   type trade = (int64, int64) Mt.Tick.tdts
 
-  val ticker : [< pairs] -> [< exchanges] -> (ticker, err) result t
-  val book : [< pairs] -> [< exchanges] -> (book_entry OrderBook.t, err) result t
-  val trades : ?since:int64 -> ?limit:int -> [< pairs] -> [< exchanges] ->
-    (trade list, err) result t
+  val symbols : [< Exchange.t] -> [> Symbol.t] list
+  val ticker : symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
+    (ticker, err) result t
+  val book : symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
+    (book_entry OrderBook.t, err) result t
+  val trades : ?since:int64 -> ?limit:int -> symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
+    unit -> (trade list, err) result t
 end

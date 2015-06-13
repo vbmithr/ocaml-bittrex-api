@@ -3,8 +3,9 @@ open Core.Std
 open Async.Std
 open Cohttp_async
 open Mt
-open Bittrex_intf
 open Bittrex
+
+include Bittrex_intf
 
 let trap_exn f =
   try_with f >>| function
@@ -141,47 +142,52 @@ module Generic = struct
   type book_entry = int64 Mt.Tick.t
   type trade = (int64, int64) Mt.Tick.tdts
 
-  let ticker c = function
-    | `Bitfinex ->
-      Bitfinex.(accept c |> function
-        | None -> return @@ internal_error "unsupported"
-        | Some c -> ticker c)
-    | `BTCE ->
-      BTCE.(accept c |> function
-        | None -> return @@ internal_error "unsupported"
-        | Some c -> ticker c)
-    | `Kraken ->
-      Kraken.(accept c |> function
-        | None -> return @@ internal_error "unsupported"
-        | Some c -> ticker c)
+  let symbols = function
+    | `Bitfinex -> Bitfinex.symbols
+    | `BTCE -> BTCE.symbols
+    | `Kraken -> Kraken.symbols
 
-  let book c = function
+  let ticker ~symbol ~exchange = match exchange with
     | `Bitfinex ->
-      Bitfinex.(accept c |> function
+      Bitfinex.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
-        | Some c -> book c)
+        | Some symbol -> ticker symbol)
     | `BTCE ->
-      BTCE.(accept c |> function
+      BTCE.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
-        | Some c -> book c)
+        | Some symbol -> ticker symbol)
     | `Kraken ->
-      (Kraken.(accept c |> function
+      Kraken.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
-        | Some c -> book c)
+        | Some symbol -> ticker symbol)
+
+  let book ~symbol ~exchange = match exchange with
+    | `Bitfinex ->
+      Bitfinex.(accept symbol |> function
+        | None -> return @@ internal_error "unsupported"
+        | Some symbol -> book symbol)
+    | `BTCE ->
+      BTCE.(accept symbol |> function
+        | None -> return @@ internal_error "unsupported"
+        | Some symbol -> book symbol)
+    | `Kraken ->
+      (Kraken.(accept symbol |> function
+        | None -> return @@ internal_error "unsupported"
+        | Some symbol -> book symbol)
        :> (book_entry OrderBook.t, err) result Deferred.t)
 
-  let trades ?since ?limit c = function
+  let trades ?since ?limit ~symbol ~exchange () = match exchange with
     | `Bitfinex ->
-      Bitfinex.(accept c |> function
+      Bitfinex.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
-        | Some c -> trades ?since ?limit c)
+        | Some symbol -> trades ?since ?limit symbol)
     | `BTCE ->
-      BTCE.(accept c |> function
+      BTCE.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
-        | Some c -> trades ?since ?limit c)
+        | Some symbol -> trades ?since ?limit symbol)
     | `Kraken ->
-      (Kraken.(accept c |> function
+      (Kraken.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
-        | Some c -> trades ?since ?limit c)
+        | Some symbol -> trades ?since ?limit symbol)
       :> (trade list, err) result Deferred.t)
 end
