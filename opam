@@ -20,4 +20,5 @@ depends: [
   "containers"
   "async_ssl"
   "cohttp"
+  "oclock"
 ]

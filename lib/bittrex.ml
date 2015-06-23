@@ -170,7 +170,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         price: string;
         amount: string;
         exchange: string;
-        type_ [@key "type"]: string;
+        type_: string [@key "type"];
       } [@@deriving yojson]
     end
     include T
@@ -609,7 +609,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   module Trade = struct
     module T = struct
       type t = {
-        type_ [@key "type"]: string;
+        type_: string [@key "type"];
         price: float;
         amount: float;
         tid: int;
