@@ -685,7 +685,7 @@ end
 (*     end *)
 
 (*     let of_raw t = new Mt.Ticker.t *)
-(*       ~ts:Oclock.(gettime realtime_coarse) *)
+(*       ~ts:(Unix.gettimeofday () *. 1e9 |> Int64.of_float) *)
 (*       ~last:(satoshis_of_string_exn t.Raw.last) *)
 (*       ~bid:(satoshis_of_string_exn t.Raw.highestBid) *)
 (*       ~ask:(satoshis_of_string_exn t.Raw.lowestAsk) *)
@@ -790,7 +790,7 @@ module Kraken (H: HTTP_CLIENT) = struct
                   | json -> `Error (Yojson.Safe.to_string json))
 
     let of_raw t = new Mt.Ticker.tvwap
-      ~ts:Oclock.(gettime realtime_coarse)
+      ~ts:(Unix.gettimeofday () *. 1e9 |> Int64.of_float)
       ~bid:(satoshis_of_string_exn @@ List.hd t.b)
       ~ask:(satoshis_of_string_exn @@ List.hd t.a)
       ~last:(satoshis_of_string_exn @@ List.hd t.c)
