@@ -125,7 +125,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let low = satoshis_of_string_exn r.low in
       let high = satoshis_of_string_exn r.high in
       let volume = satoshis_of_string_exn r.volume in
-      let ts = Int64.of_string String.(sub r.timestamp 0 10 ^ sub r.timestamp 11 6) in
+      let ts = Int64.of_string String.(sub r.timestamp 0 10 ^ sub r.timestamp 11 9) in
       new Mt.Ticker.tvwap ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts in
     ticker p >>| fun t -> R.map t of_raw
 
@@ -565,7 +565,7 @@ module BTCE (H: HTTP_CLIENT) = struct
         ~low:(satoshis_of_float_exn t.low)
         ~vwap:(satoshis_of_float_exn t.avg)
         ~volume:(satoshis_of_float_exn t.vol)
-        ~ts:Int64.(1_000_000L * of_int t.updated)
+        ~ts:Int64.(of_int t.updated * 1_000_000_000L)
   end
   let ticker p =
     Ticker.(ticker p >>| fun t -> R.map t of_raw)
