@@ -125,7 +125,10 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let low = satoshis_of_string_exn r.low in
       let high = satoshis_of_string_exn r.high in
       let volume = satoshis_of_string_exn r.volume in
-      let ts = Int64.of_string String.(sub r.timestamp 0 10 ^ sub r.timestamp 11 9) in
+      let ts = Bytes.make 19 '0' in
+      Bytes.blit_string r.timestamp 0 ts 0 10;
+      Bytes.blit_string r.timestamp 11 ts 10 String.(length r.timestamp - 11);
+      let ts = ts |> Bytes.unsafe_to_string |> Int64.of_string in
       new Mt.Ticker.tvwap ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts in
     ticker p >>| fun t -> R.map t of_raw
 
