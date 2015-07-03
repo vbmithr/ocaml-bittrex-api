@@ -80,7 +80,7 @@ module type EXCHANGE = sig
 
   val ticker : symbol -> (ticker, err) result t
 
-  val book : symbol -> (book_entry OrderBook.t, err) result t
+  val book : symbol -> (book_entry list * book_entry list, err) result t
 
   val trades : ?since:int64 -> ?limit:int -> symbol ->  (trade list, err) result t
     (** [trades ?since ?limit symbol] is a thread that returns a list of
@@ -94,20 +94,20 @@ end
 
 module type BITFINEX = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
-   and type ticker = (int64, int64) Ticker.tvwap
-   and type book_entry = int64 Mt.Tick.t
-   and type trade = (int64, int64) Mt.Tick.tdts
+   and type ticker = (int64, int64) Ticker.Tvwap.t
+   and type book_entry = int64 Mt.Tick.T.t
+   and type trade = (int64, int64) Mt.Tick.TDTS.t
 
 module type BTCE = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
-   and type ticker = (int64, int64) Ticker.tvwap
-   and type book_entry = int64 Tick.t
-   and type trade = (int64, int64) Mt.Tick.tdts
+   and type ticker = (int64, int64) Ticker.Tvwap.t
+   and type book_entry = int64 Tick.T.t
+   and type trade = (int64, int64) Mt.Tick.TDTS.t
 
 module type KRAKEN = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `XBTLTC]
-   and type ticker = (int64, int64) Ticker.tvwap
-   and type book_entry = (int64, int64) Tick.tts
+   and type ticker = (int64, int64) Ticker.Tvwap.t
+   and type book_entry = (int64, int64) Tick.TTS.t
    and type trade = < d : [ `Ask | `Bid | `Unset ];
                       kind : [ `Limit | `Market | `Unset ]; misc : string;
                       p : int64; ts : int64; v : int64 >
@@ -116,9 +116,9 @@ module type KRAKEN = EXCHANGE
 
 module type GENERIC = sig
   include IO
-  type ticker = (int64, int64) Ticker.tvwap
-  type book_entry = int64 Mt.Tick.t
-  type trade = (int64, int64) Mt.Tick.tdts
+  type ticker = (int64, int64) Ticker.Tvwap.t
+  type book_entry = int64 Mt.Tick.T.t
+  type trade = (int64, int64) Mt.Tick.TDTS.t
 
   val price_increment : [< Exchange.t] -> int
   val trade_increment : [< Exchange.t] -> int
@@ -127,7 +127,7 @@ module type GENERIC = sig
   val ticker : symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
     (ticker, err) result t
   val book : symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
-    (book_entry OrderBook.t, err) result t
+    (book_entry list * book_entry list, err) result t
   val trades : ?since:int64 -> ?limit:int -> symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
     unit -> (trade list, err) result t
 end

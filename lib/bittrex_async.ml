@@ -138,9 +138,9 @@ end
 
 module Generic = struct
   include AsyncIO
-  type ticker = (int64, int64) Ticker.tvwap
-  type book_entry = int64 Mt.Tick.t
-  type trade = (int64, int64) Mt.Tick.tdts
+  type ticker = (int64, int64) Ticker.Tvwap.t
+  type book_entry = int64 Mt.Tick.T.t
+  type trade = (int64, int64) Mt.Tick.TDTS.t
 
   let symbols = function
     | `Bitfinex -> Bitfinex.symbols
@@ -184,7 +184,7 @@ module Generic = struct
       (Kraken.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
         | Some symbol -> book symbol)
-       :> (book_entry OrderBook.t, err) result Deferred.t)
+       :> (book_entry list * book_entry list, err) result Deferred.t)
 
   let trades ?since ?limit ~symbol ~exchange () = match exchange with
     | `Bitfinex ->
