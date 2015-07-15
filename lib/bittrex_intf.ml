@@ -40,24 +40,37 @@ module Exchange = struct
 end
 
 module Symbol = struct
-  type t = [`XBTUSD | `LTCUSD | `LTCXBT | `XBTLTC] [@@deriving show, enum, eq, ord]
+  type t = [
+    | `XBTUSD
+    | `XBTEUR
+    | `LTCUSD
+    | `LTCEUR
+    | `LTCXBT
+    | `XBTLTC
+  ] [@@deriving show, enum, eq, ord]
 
   let to_string = function
     | `XBTUSD -> "XBTUSD"
+    | `XBTEUR -> "XBTEUR"
     | `LTCUSD -> "LTCUSD"
+    | `LTCEUR -> "LTCEUR"
     | `LTCXBT -> "LTCXBT"
     | `XBTLTC -> "XBTLTC"
 
   let of_string s = String.lowercase s |> function
     | "xbtusd" | "`xbtusd" | "btcusd" -> Some `XBTUSD
     | "ltcusd" | "`ltcusd" -> Some `LTCUSD
+    | "xbteur" | "`xbteur" | "btceur" -> Some `XBTEUR
+    | "ltceur" | "`ltceur" -> Some `LTCEUR
     | "ltcxbt" | "`ltcxbt" | "ltcbtc" -> Some `LTCXBT
     | "xbtltc" | "`xbtltc" | "btcltc" -> Some `XBTLTC
     | _ -> None
 
   let descr = function
     | `XBTUSD -> "Bitcoin / US Dollar"
+    | `XBTEUR -> "Bitcoin / Euro"
     | `LTCUSD -> "Litecoin / US Dollar"
+    | `LTCEUR -> "Litecoin / Euro"
     | `LTCXBT -> "Litecoin / Bitcoin"
     | `XBTLTC -> "Bitcoin / Litecoin"
 end
@@ -95,17 +108,17 @@ end
 module type BITFINEX = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
    and type ticker = (int64, int64) Ticker.Tvwap.t
-   and type book_entry = int64 Mt.Tick.T.t
-   and type trade = (int64, int64) Mt.Tick.TDTS.t
+   and type book_entry = int64 Tick.T.t
+   and type trade = (int64, int64) Tick.TDTS.t
 
 module type BTCE = EXCHANGE
-  with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
+  with type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `LTCXBT]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
-   and type trade = (int64, int64) Mt.Tick.TDTS.t
+   and type trade = (int64, int64) Tick.TDTS.t
 
 module type KRAKEN = EXCHANGE
-  with type symbol = [`XBTUSD | `LTCUSD | `XBTLTC]
+  with type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = (int64, int64) Tick.TTS.t
    and type trade = < d : [ `Ask | `Bid | `Unset ];
@@ -117,8 +130,8 @@ module type KRAKEN = EXCHANGE
 module type GENERIC = sig
   include IO
   type ticker = (int64, int64) Ticker.Tvwap.t
-  type book_entry = int64 Mt.Tick.T.t
-  type trade = (int64, int64) Mt.Tick.TDTS.t
+  type book_entry = int64 Tick.T.t
+  type trade = (int64, int64) Tick.TDTS.t
 
   val price_increment : [< Exchange.t] -> int
   val trade_increment : [< Exchange.t] -> int

@@ -80,10 +80,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
 
   let accept = function
-    | `XBTLTC -> None
     | `XBTUSD -> Some `XBTUSD
     | `LTCUSD -> Some `LTCUSD
     | `LTCXBT -> Some `LTCXBT
+    | `XBTEUR -> None
+    | `LTCEUR -> None
+    | `XBTLTC -> None
 
   let price_increment = 1_000_000
   let trade_increment = 1
@@ -506,27 +508,31 @@ end
 
 module BTCE (H: HTTP_CLIENT) = struct
   include H
+  type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `LTCXBT]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
 
   let kind = `BTCE
 
-  type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
-  let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
+  let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `LTCXBT]
 
   let price_increment = 100_000
   let trade_increment = 1
 
   let accept = function
-    | `XBTLTC -> None
     | `XBTUSD -> Some `XBTUSD
     | `LTCUSD -> Some `LTCUSD
     | `LTCXBT -> Some `LTCXBT
+    | `XBTEUR -> Some `XBTEUR
+    | `LTCEUR -> Some `LTCEUR
+    | `XBTLTC -> None
 
   let string_of_symbol = function
     | `XBTUSD -> "btc_usd"
     | `LTCUSD -> "ltc_usd"
+    | `XBTEUR -> "btc_eur"
+    | `LTCEUR -> "ltc_eur"
     | `LTCXBT -> "ltc_btc"
 
   let get endpoint params yojson_to_a =
@@ -733,12 +739,12 @@ end
 
 module Kraken (H: HTTP_CLIENT) = struct
   include H
-  type symbol = [`XBTUSD | `LTCUSD | `XBTLTC]
+  type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = (int64, int64) Tick.TTS.t
 
   let kind = `Kraken
-  let symbols = [`XBTUSD; `LTCUSD; `XBTLTC]
+  let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `XBTLTC]
 
   let price_increment = 1_000
   let trade_increment = 1
@@ -747,11 +753,15 @@ module Kraken (H: HTTP_CLIENT) = struct
     | `XBTLTC -> Some `XBTLTC
     | `XBTUSD -> Some `XBTUSD
     | `LTCUSD -> Some `LTCUSD
+    | `XBTEUR -> Some `XBTEUR
+    | `LTCEUR -> Some `LTCEUR
     | `LTCXBT -> None
 
   let string_of_symbol = function
     | `XBTUSD -> "XXBTZUSD"
     | `LTCUSD -> "XLTCZUSD"
+    | `XBTEUR -> "XXBTZEUR"
+    | `LTCEUR -> "XLTCZEUR"
     | `XBTLTC -> "XXBTXLTC"
 
   type 'a error_monad = {

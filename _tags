@@ -1,4 +1,4 @@
-true: debug, bin_annot, safe_string, short_paths
+true: debug, bin_annot, safe_string
 <lib>: include
 <src>: include
 
