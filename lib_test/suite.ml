@@ -5,7 +5,8 @@ open Async.Std
 open Mt
 open Bittrex_async
 
-let log = Log.create ~level:`Info ~output:[(Log.Output.stderr ())]
+let log = Log.create ~on_error:`Raise
+    ~level:`Info ~output:[(Log.Output.stderr ())]
 
 let ignore_log label f =
   f () >>| function
