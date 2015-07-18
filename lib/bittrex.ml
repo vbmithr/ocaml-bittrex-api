@@ -67,7 +67,6 @@ let int_of_float_mult_exn mult v =
 
 let satoshis_of_string_exn = int_of_string_mult_exn 8
 let satoshis_of_float_exn = int_of_float_mult_exn 8
-let timestamp_of_float_exn = int_of_float_mult_exn 6
 
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
@@ -817,24 +816,15 @@ module Kraken (H: HTTP_CLIENT) = struct
   let book p =
     let lift_f = function
       | `Assoc ["asks", `List asks; "bids", `List bids] ->
-        let f () =
-          List.map (function
-              | `List [`String p; `String v; `Int ts] ->
-                new Tick.TTS.t
-                  ~p:(satoshis_of_string_exn p)
-                  ~v:(satoshis_of_string_exn v)
-                  ~ts:Int64.(1_000_000L * of_int ts)
-              | _ -> raise Exit
-            ) asks,
-          List.map (function
-              | `List [`String p; `String v; `Int ts] ->
-                new Tick.TTS.t
-                  ~p:(satoshis_of_string_exn p)
-                  ~v:(satoshis_of_string_exn v)
-                  ~ts:Int64.(1_000_000L * of_int ts)
-              | _ -> raise Exit
-            ) bids in
-        (try `Ok (f ()) with Exit -> `Error "book")
+        let book_of_json json = List.map (function
+            | `List [`String p; `String v; `Int ts] ->
+              new Tick.TTS.t
+                ~p:(satoshis_of_string_exn p)
+                ~v:(satoshis_of_string_exn v)
+                ~ts:Int64.(1_000_000L * of_int ts)
+            | _ -> raise Exit
+          ) json in
+        (try `Ok (book_of_json bids, book_of_json asks) with Exit -> `Error "book")
       | json -> `Error (Yojson.Safe.to_string json) in
 
     get "public/Depth" ["pair", string_of_symbol p]
