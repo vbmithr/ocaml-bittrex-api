@@ -39,34 +39,15 @@ module Int64 = struct
   let ( / ) = div
 end
 
-let int_of_string_mult mult s =
-  let append_n_zeros n s = s ^ String.make n '0' in
-  CCString.Split.list_ ~by:"." s |> function
-  | [(_, o, l); (_, o', l')] ->
-    let a = String.sub s o l in
-    let b = String.sub s o' l' in
-    let b =
-      if l' = mult then b
-      else if l' < mult then append_n_zeros (mult - l') b
-      else String.sub b 0 mult in
-    Some Int64.(of_string a * of_int (CCInt.pow 10 mult) + of_string b)
-  | _ -> None
+let satoshis_of_float_exn f =
+  let s = Printf.sprintf "%.8f" f in
+  let i = String.index s '.' in
+  let a = Int64.of_string @@ String.sub s 0 i in
+  let b = Int64.of_string @@ String.sub s (i+1) (String.length s - i - 1) in
+  Int64.(a * 100_000_000L + b)
 
-let int_of_string_mult_exn mult s =
-  int_of_string_mult mult s |> function
-  | Some v -> v
-  | None -> invalid_arg "satoshis_of_string"
-
-let int_of_float_mult mult v =
-  int_of_string_mult mult @@ Printf.sprintf "%.*f" mult v
-
-let int_of_float_mult_exn mult v =
-  int_of_float_mult mult v |> function
-  | Some v -> v
-  | None -> invalid_arg "satoshis_of_float"
-
-let satoshis_of_string_exn = int_of_string_mult_exn 8
-let satoshis_of_float_exn = int_of_float_mult_exn 8
+let satoshis_of_string_exn s =
+  satoshis_of_float_exn @@ float_of_string s
 
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
