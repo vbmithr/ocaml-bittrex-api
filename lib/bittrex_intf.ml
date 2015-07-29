@@ -22,6 +22,7 @@ module type HTTP_CLIENT = sig
   include IO
 
   val get : string -> (string * string) list -> (string, err) result t
+  val post : Cstruct.t -> string -> (string * string) list -> (string, err) result t
 end
 
 module Exchange = struct

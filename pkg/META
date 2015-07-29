@@ -3,7 +3,7 @@ description = "Bittrex API library"
 requires = "bittrex.core"
 
 package "core" (
-  requires = "rresult mt ppx_deriving_yojson.runtime ppx_deriving.std containers"
+  requires = "unix rresult mt ppx_deriving_yojson.runtime ppx_deriving.std containers"
   archive(byte) = "bittrex.cma"
   archive(byte, plugin) = "bittrex.cma"
   archive(native) = "bittrex.cmxa"
@@ -12,7 +12,7 @@ package "core" (
 )
 
 package "async" (
-  requires = "bittrex.core cohttp.async"
+  requires = "bittrex.core async cohttp.async nocrypto threads"
   archive(byte) = "bittrex_async.cma"
   archive(byte, plugin) = "bittrex_async.cma"
   archive(native) = "bittrex_async.cmxa"

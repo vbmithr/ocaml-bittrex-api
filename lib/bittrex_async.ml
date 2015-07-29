@@ -30,6 +30,9 @@ module Bitfinex = struct
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
+
+    let post key endpoint params = Deferred.return @@
+      R.fail @@ `Internal_error "Unsupported"
   end
   include Bitfinex(H)
 end
@@ -47,6 +50,9 @@ module BTCE = struct
         Client.get uri >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
+
+    let post key endpoint params = Deferred.return @@
+      R.fail @@ `Internal_error "Unsupported"
   end
   include BTCE(H)
 end
@@ -65,6 +71,9 @@ module Bittrex = struct
         Body.to_string body in
       trap_exn f
   end
+
+  let post key endpoint params = Deferred.return @@
+      R.fail @@ `Internal_error "Unsupported"
 end
 
 module Cryptsy = struct
@@ -80,6 +89,9 @@ module Cryptsy = struct
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
+
+    let post key endpoint params = Deferred.return @@
+      R.fail @@ `Internal_error "Unsupported"
   end
 end
 
@@ -94,6 +106,9 @@ module Poloniex = struct
         Client.get Uri.(with_query' (Uri.of_string base_uri) params) >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
+
+    let post key endpoint params = Deferred.return @@
+      R.fail @@ `Internal_error "Unsupported"
   end
 end
 
@@ -108,6 +123,47 @@ module Kraken = struct
       let f () =
         let uri = Uri.of_string @@ base_uri ^ endpoint in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
+        Body.to_string body in
+      trap_exn f
+
+    let post_nonce = ref 0L
+    let buf = Bigstring.create 1024
+
+    let nonce () =
+      let ret = !post_nonce in
+      Int64.(post_nonce := !post_nonce + 1L);
+      ret
+
+    let post key endpoint params =
+      let f () =
+        let open Nocrypto in
+        let uri_str = base_uri ^ endpoint in
+        let uri_str_len = String.length uri_str in
+        let nonce = nonce () in
+        let body = Uri.encoded_of_query @@
+          List.map ~f:(fun (a, b) -> a, [b]) params in
+        let body_len = String.length body in
+
+        let sha256 = Hash.SHA256.init () in
+        EndianBigstring.BigEndian.set_int64 buf 0 nonce;
+        Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:8);
+        Bigstring.From_string.blit body 0 buf 0 body_len;
+        Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:body_len);
+        Bigstring.From_string.blit uri_str 0 buf 0 uri_str_len;
+        let sha256_res = Hash.SHA256.get sha256 in
+        Cstruct.(Bigstring.blit sha256_res.buffer
+                   0 buf uri_str_len sha256_res.len);
+        let sign = Nocrypto.Hash.SHA512.hmac ~key @@
+          Cstruct.(of_bigarray buf ~off:0 ~len:(uri_str_len + sha256_res.len))
+        in
+        let headers = Cohttp.Header.of_list
+            ["content-type", "application/x-www-form-urlencoded";
+             "API-Key", Cstruct.to_string @@ Base64.encode key;
+             "API-Sign", Cstruct.to_string @@ Base64.encode sign;
+            ] in
+        let uri = Uri.of_string uri_str in
+        let body = Cohttp_async.Body.of_string body in
+        Client.post ~headers ~body uri >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
   end
@@ -127,6 +183,9 @@ module Hitbtc = struct
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
+
+    let post key endpoint params = Deferred.return @@
+      R.fail @@ `Internal_error "Unsupported"
   end
 end
 

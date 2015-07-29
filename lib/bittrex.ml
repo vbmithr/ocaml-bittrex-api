@@ -847,6 +847,8 @@ module Kraken (H: HTTP_CLIENT) = struct
     (if since = -1L then [] else ["since", Int64.to_string since]))
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | json -> `Error (Yojson.Safe.to_string json))
+
+  let balance key = post key "private/Balance"
 end
 
 (* module Hitbtc (H: HTTP_CLIENT) = struct *)
