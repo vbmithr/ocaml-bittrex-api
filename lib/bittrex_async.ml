@@ -134,7 +134,7 @@ module Kraken = struct
       Int64.(post_nonce := !post_nonce + 1L);
       ret
 
-    let post key endpoint params =
+    let post creds endpoint params =
       let f () =
         let open Nocrypto in
         let uri_str = base_uri ^ endpoint in
@@ -153,12 +153,12 @@ module Kraken = struct
         let sha256_res = Hash.SHA256.get sha256 in
         Cstruct.(Bigstring.blit sha256_res.buffer
                    0 buf uri_str_len sha256_res.len);
-        let sign = Nocrypto.Hash.SHA512.hmac ~key @@
+        let sign = Nocrypto.Hash.SHA512.hmac ~key:creds.secret @@
           Cstruct.(of_bigarray buf ~off:0 ~len:(uri_str_len + sha256_res.len))
         in
         let headers = Cohttp.Header.of_list
             ["content-type", "application/x-www-form-urlencoded";
-             "API-Key", Cstruct.to_string @@ Base64.encode key;
+             "API-Key", Cstruct.to_string @@ Base64.encode creds.key;
              "API-Sign", Cstruct.to_string @@ Base64.encode sign;
             ] in
         let uri = Uri.of_string uri_str in
@@ -252,5 +252,10 @@ module Generic = struct
       (Kraken.(accept symbol |> function
         | None -> return @@ internal_error "unsupported"
         | Some symbol -> trades ?since ?limit symbol)
-      :> (trade list, err) result Deferred.t)
+       :> (trade list, err) result Deferred.t)
+
+  let balance credentials ~exchange ~currency = match exchange with
+    | `Bitfinex -> Bitfinex.balance credentials currency
+    | `BTCE -> BTCE.balance credentials currency
+    | `Kraken -> Kraken.balance credentials currency
 end

@@ -55,6 +55,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
+  type nonrec credentials = credentials
 
   let kind = `Bitfinex
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
@@ -185,6 +186,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     trades ?since ?limit p >>| fun p ->
     R.map p (List.map of_raw)
 
+  let balance _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Bittrex (H: HTTP_CLIENT) = struct *)
@@ -492,6 +494,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
+  type nonrec credentials = credentials
 
   let kind = `BTCE
 
@@ -624,6 +627,8 @@ module BTCE (H: HTTP_CLIENT) = struct
                )
          )
       )
+
+  let balance _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Poloniex (H: HTTP_CLIENT) = struct *)
@@ -715,13 +720,12 @@ end
 (*   end *)
 (* end *)
 
-
-
 module Kraken (H: HTTP_CLIENT) = struct
   include H
   type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = (int64, int64) Tick.TTS.t
+  type nonrec credentials = credentials
 
   let kind = `Kraken
   let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `XBTLTC]
@@ -746,7 +750,7 @@ module Kraken (H: HTTP_CLIENT) = struct
 
   type 'a error_monad = {
     error: string list;
-    result: 'a option [@default None];
+    result: ('a option [@default None]);
   } [@@deriving yojson]
 
   let error_of_error_monad e =
@@ -759,10 +763,20 @@ module Kraken (H: HTTP_CLIENT) = struct
       let open R in
       yojson_of_string s >>=
       (fun json -> R.(reword_error (fun str -> `Json_error str)
-                        @@ of_presult (error_monad_of_yojson yojson_to_a json))) >>=
+                      @@ of_presult (error_monad_of_yojson yojson_to_a json))) >>=
       error_of_error_monad
     in
     get endpoint params >>| fun s -> R.(s >>= handle_err)
+
+  let post credentials endpoint params yojson_to_a =
+    let handle_err s =
+      let open R in
+      yojson_of_string s >>=
+      (fun json -> R.(reword_error (fun str -> `Json_error str)
+                      @@ of_presult (error_monad_of_yojson yojson_to_a json))) >>=
+      error_of_error_monad
+    in
+    post credentials endpoint params >>| fun s -> R.(s >>= handle_err)
 
   module Ticker = struct
     type t = {
@@ -848,7 +862,8 @@ module Kraken (H: HTTP_CLIENT) = struct
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | json -> `Error (Yojson.Safe.to_string json))
 
-  let balance key = post key "private/Balance"
+  let balance creds currency =
+    post creds "private/Balance" [] (fun json -> `Error "")
 end
 
 (* module Hitbtc (H: HTTP_CLIENT) = struct *)

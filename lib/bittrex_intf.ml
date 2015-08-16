@@ -11,6 +11,7 @@ type err = [
   | `Exchange_error of string
   | `Json_error of string
   | `Internal_error of string
+  | `Not_implemented
   | R.exn_trap
 ] [@@deriving show]
 
@@ -18,15 +19,21 @@ let exchange_error str = R.error (`Exchange_error str)
 let json_error str = R.error (`Json_error str)
 let internal_error str = R.error (`Internal_error str)
 
+type credentials = { key: Cstruct.t; secret: Cstruct.t } [@@deriving create]
+
 module type HTTP_CLIENT = sig
   include IO
 
   val get : string -> (string * string) list -> (string, err) result t
-  val post : Cstruct.t -> string -> (string * string) list -> (string, err) result t
+  val post : credentials -> string -> (string * string) list -> (string, err) result t
 end
 
 module Exchange = struct
-  type t = [`Bitfinex | `BTCE | `Kraken] [@@deriving show, enum, eq, ord]
+  type t = [
+    | `Bitfinex [@name "bitfinex"]
+    | `BTCE [@name "btce"]
+    | `Kraken [@name "kraken"]
+  ] [@@deriving show, enum, eq, ord, yojson]
 
   let to_string = function
     | `Bitfinex -> "BITFINEX"
@@ -38,6 +45,34 @@ module Exchange = struct
     | "btce" | "`btce" -> Some `BTCE
     | "kraken" | "`kraken" -> Some `Kraken
     | _ -> None
+end
+
+module Config = struct
+  type cred = {
+    exchange: Exchange.t;
+    key: string;
+    secret: string
+  } [@@deriving yojson]
+
+  type t = cred list [@@deriving yojson]
+
+  let load fn =
+    CCError.map
+      (List.map (fun {exchange; key; secret} ->
+           exchange, Cstruct.{key = of_string key;
+                              secret = of_string secret})) @@
+      CCIO.with_in fn (fun ic ->
+          of_yojson @@ Yojson.Safe.from_channel ic
+      )
+end
+
+module Currency = struct
+  type t = [
+    | `XBT
+    | `LTC
+    | `EUR
+    | `USD
+  ] [@@deriving show, enum, eq, ord]
 end
 
 module Symbol = struct
@@ -76,6 +111,7 @@ module Symbol = struct
     | `XBTLTC -> "Bitcoin / Litecoin"
 end
 
+
 (** Abstract exchange type. *)
 
 module type EXCHANGE = sig
@@ -102,6 +138,8 @@ module type EXCHANGE = sig
         supports it, the list will be limited to [limit] entries, and
         will not contain trades older than [since], where [since] is
         an unix timestamp in nanoseconds. *)
+
+  val balance : credentials -> Currency.t -> (int, err) result t
 end
 
 (** Concrete exchange types. *)
@@ -142,6 +180,9 @@ module type GENERIC = sig
     (ticker, err) result t
   val book : symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
     (book_entry list * book_entry list, err) result t
-  val trades : ?since:int64 -> ?limit:int -> symbol:[< Symbol.t] -> exchange:[< Exchange.t] ->
-    unit -> (trade list, err) result t
+  val trades : ?since:int64 -> ?limit:int -> symbol:[< Symbol.t] ->
+    exchange:[< Exchange.t] ->  unit -> (trade list, err) result t
+
+  val balance : credentials ->
+    exchange:Exchange.t -> currency:Currency.t -> (int, err) result t
 end

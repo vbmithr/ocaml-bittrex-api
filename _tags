@@ -3,6 +3,7 @@ true: debug, bin_annot, safe_string
 <src>: include
 
 <{lib,src,lib_test}/*.*>: package(containers), \
+                          package(containers.io), \
                           package(ppx_deriving.std), \
                           package(ppx_deriving_yojson), \
                           package(cohttp.async), \
