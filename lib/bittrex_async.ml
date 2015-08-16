@@ -150,15 +150,16 @@ module Kraken = struct
         Bigstring.From_string.blit body 0 buf 0 body_len;
         Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:body_len);
         Bigstring.From_string.blit uri_str 0 buf 0 uri_str_len;
-        let sha256_res = Hash.SHA256.get sha256 in
-        Cstruct.(Bigstring.blit sha256_res.buffer
-                   0 buf uri_str_len sha256_res.len);
-        let sign = Nocrypto.Hash.SHA512.hmac ~key:creds.secret @@
-          Cstruct.(of_bigarray buf ~off:0 ~len:(uri_str_len + sha256_res.len))
+        let sha256 = Hash.SHA256.get sha256 in
+        Cstruct.(Bigstring.blit ~src:sha256.buffer ~src_pos:0
+                   ~dst:buf ~dst_pos:uri_str_len ~len:sha256.len);
+        let key = Base64.decode creds.secret in
+        let sign = Hash.SHA512.hmac ~key @@
+          Cstruct.(of_bigarray buf ~off:0 ~len:(uri_str_len + sha256.len))
         in
         let headers = Cohttp.Header.of_list
             ["content-type", "application/x-www-form-urlencoded";
-             "API-Key", Cstruct.to_string @@ Base64.encode creds.key;
+             "API-Key", Cstruct.to_string creds.key;
              "API-Sign", Cstruct.to_string @@ Base64.encode sign;
             ] in
         let uri = Uri.of_string uri_str in
