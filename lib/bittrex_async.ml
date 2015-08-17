@@ -31,10 +31,28 @@ module Bitfinex = struct
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = Deferred.return @@
-      R.fail @@ `Internal_error "Unsupported"
+    let post key endpoint params = return not_implemented
   end
   include Bitfinex(H)
+end
+
+module Bitstamp = struct
+  module H = struct
+    include AsyncIO
+
+    let base_uri = "https://www.bitstamp.net/api/"
+
+    let get endpoint params =
+      let f () =
+        let uri =  Uri.of_string @@ base_uri ^ endpoint in
+        Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
+        Body.to_string body
+      in
+      trap_exn f
+
+    let post key endpoint params = return not_implemented
+  end
+  include Bitstamp(H)
 end
 
 module BTCE = struct
@@ -51,8 +69,7 @@ module BTCE = struct
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = Deferred.return @@
-      R.fail @@ `Internal_error "Unsupported"
+    let post key endpoint params = return not_implemented
   end
   include BTCE(H)
 end
@@ -72,8 +89,7 @@ module Bittrex = struct
       trap_exn f
   end
 
-  let post key endpoint params = Deferred.return @@
-      R.fail @@ `Internal_error "Unsupported"
+  let post key endpoint params = return not_implemented
 end
 
 module Cryptsy = struct
@@ -90,8 +106,7 @@ module Cryptsy = struct
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = Deferred.return @@
-      R.fail @@ `Internal_error "Unsupported"
+    let post key endpoint params = return not_implemented
   end
 end
 
@@ -107,8 +122,7 @@ module Poloniex = struct
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = Deferred.return @@
-      R.fail @@ `Internal_error "Unsupported"
+    let post key endpoint params = return not_implemented
   end
 end
 
@@ -185,8 +199,7 @@ module Hitbtc = struct
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = Deferred.return @@
-      R.fail @@ `Internal_error "Unsupported"
+    let post key endpoint params = return not_implemented
   end
 end
 
@@ -198,65 +211,81 @@ module Generic = struct
 
   let symbols = function
     | `Bitfinex -> Bitfinex.symbols
+    | `Bitstamp -> Bitstamp.symbols
     | `BTCE -> BTCE.symbols
     | `Kraken -> Kraken.symbols
 
   let price_increment = function
     | `Bitfinex -> Bitfinex.price_increment
+    | `Bitstamp -> Bitstamp.price_increment
     | `BTCE -> BTCE.price_increment
     | `Kraken -> Kraken.price_increment
 
   let trade_increment = function
     | `Bitfinex -> Bitfinex.trade_increment
+    | `Bitstamp -> Bitstamp.trade_increment
     | `BTCE -> BTCE.trade_increment
     | `Kraken -> Kraken.trade_increment
 
   let ticker ~symbol ~exchange = match exchange with
     | `Bitfinex ->
       Bitfinex.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
+        | Some symbol -> ticker symbol)
+    | `Bitstamp ->
+      Bitstamp.(accept symbol |> function
+        | None -> return unsupported
         | Some symbol -> ticker symbol)
     | `BTCE ->
       BTCE.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
         | Some symbol -> ticker symbol)
     | `Kraken ->
       Kraken.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
         | Some symbol -> ticker symbol)
 
   let book ~symbol ~exchange = match exchange with
     | `Bitfinex ->
       Bitfinex.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
+        | Some symbol -> book symbol)
+    | `Bitstamp ->
+      Bitstamp.(accept symbol |> function
+        | None -> return unsupported
         | Some symbol -> book symbol)
     | `BTCE ->
       BTCE.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
         | Some symbol -> book symbol)
     | `Kraken ->
       (Kraken.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
         | Some symbol -> book symbol)
        :> (book_entry list * book_entry list, err) result Deferred.t)
 
   let trades ?since ?limit ~symbol ~exchange () = match exchange with
     | `Bitfinex ->
       Bitfinex.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
+        | Some symbol -> trades ?since ?limit symbol)
+    | `Bitstamp ->
+      Bitstamp.(accept symbol |> function
+        | None -> return unsupported
         | Some symbol -> trades ?since ?limit symbol)
     | `BTCE ->
       BTCE.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
         | Some symbol -> trades ?since ?limit symbol)
     | `Kraken ->
       (Kraken.(accept symbol |> function
-        | None -> return @@ internal_error "unsupported"
+        | None -> return unsupported
         | Some symbol -> trades ?since ?limit symbol)
        :> (trade list, err) result Deferred.t)
 
   let balance credentials ~exchange ~currency = match exchange with
     | `Bitfinex -> Bitfinex.balance credentials currency
+    | `Bitstamp -> Bitstamp.balance credentials currency
     | `BTCE -> BTCE.balance credentials currency
     | `Kraken -> Kraken.balance credentials currency
 end

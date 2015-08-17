@@ -189,6 +189,74 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   let balance _ _ = return @@ R.fail `Not_implemented
 end
 
+module Bitstamp (H: HTTP_CLIENT) = struct
+  include H
+  type symbol = [`XBTUSD]
+  type ticker = (int64, int64) Ticker.Tvwap.t
+  type book_entry = int64 Tick.T.t
+  type trade = (int64, int64) Tick.TDTS.t
+  type nonrec credentials = credentials
+
+  let kind = `Bitstamp
+  let symbols = [`XBTUSD]
+
+  let accept = function
+    | `XBTUSD -> Some `XBTUSD
+    | `LTCUSD -> None
+    | `LTCXBT -> None
+    | `XBTEUR -> None
+    | `LTCEUR -> None
+    | `XBTLTC -> None
+
+  let price_increment = 1_000_000
+  let trade_increment = 1
+
+  let get endpoint params yojson_to_a =
+    get endpoint params >>| fun s ->
+    R.(s >>= yojson_of_string >>= yojson_to_a)
+
+  let string_of_symbol = function
+    | `XBTUSD -> "BTCUSD"
+
+  module Ticker = struct
+    module T = struct
+      type t = {
+        high: string;
+        last: string;
+        timestamp: string;
+        bid: string;
+        volume: string;
+        vwap: string;
+        low: string;
+        ask: string;
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
+
+    let ticker () = get "ticker/" [] of_yojson
+  end
+
+  let ticker _ =
+    let open Ticker in
+    let of_raw r =
+      let vwap = satoshis_of_string_exn r.vwap in
+      let bid = satoshis_of_string_exn r.bid in
+      let ask = satoshis_of_string_exn r.ask in
+      let last = satoshis_of_string_exn r.last in
+      let low = satoshis_of_string_exn r.low in
+      let high = satoshis_of_string_exn r.high in
+      let volume = satoshis_of_string_exn r.volume in
+      let ts = Int64.(of_string r.timestamp * 1_000_000_000L) in
+      new Mt.Ticker.Tvwap.t ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts
+    in
+    ticker () >>| fun t -> R.map t of_raw
+
+  let book _ = return @@ R.fail `Not_implemented
+  let trades ?since ?limit _ = return @@ R.fail `Not_implemented
+  let balance _ _ = return @@ R.fail `Not_implemented
+end
+
 (* module Bittrex (H: HTTP_CLIENT) = struct *)
 (*   open H *)
 

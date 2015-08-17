@@ -11,6 +11,7 @@ type err = [
   | `Exchange_error of string
   | `Json_error of string
   | `Internal_error of string
+  | `Unsupported_by_exchange
   | `Not_implemented
   | R.exn_trap
 ] [@@deriving show]
@@ -18,6 +19,8 @@ type err = [
 let exchange_error str = R.error (`Exchange_error str)
 let json_error str = R.error (`Json_error str)
 let internal_error str = R.error (`Internal_error str)
+let unsupported = R.error `Unsupported_by_exchange
+let not_implemented = R.error `Not_implemented
 
 type credentials = { key: Cstruct.t; secret: Cstruct.t } [@@deriving create]
 
@@ -31,17 +34,20 @@ end
 module Exchange = struct
   type t = [
     | `Bitfinex [@name "bitfinex"]
+    | `Bitstamp [@name "bitstamp"]
     | `BTCE [@name "btce"]
     | `Kraken [@name "kraken"]
   ] [@@deriving show, enum, eq, ord, yojson]
 
   let to_string = function
     | `Bitfinex -> "BITFINEX"
+    | `Bitstamp -> "BITSTAMP"
     | `BTCE -> "BTCE"
     | `Kraken -> "KRAKEN"
 
   let of_string s = String.lowercase s |> function
     | "bitfinex" | "`bitfinex" -> Some `Bitfinex
+    | "bitstamp" | "`bitstamp" -> Some `Bitstamp
     | "btce" | "`btce" -> Some `BTCE
     | "kraken" | "`kraken" -> Some `Kraken
     | _ -> None
@@ -146,6 +152,12 @@ end
 
 module type BITFINEX = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
+   and type ticker = (int64, int64) Ticker.Tvwap.t
+   and type book_entry = int64 Tick.T.t
+   and type trade = (int64, int64) Tick.TDTS.t
+
+module type BITSTAMP = EXCHANGE
+  with type symbol = [`XBTUSD]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
    and type trade = (int64, int64) Tick.TDTS.t
