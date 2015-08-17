@@ -252,7 +252,31 @@ module Bitstamp (H: HTTP_CLIENT) = struct
     in
     ticker () >>| fun t -> R.map t of_raw
 
-  let book _ = return @@ R.fail `Not_implemented
+  module OrderBook = struct
+    module T = struct
+      type t = {
+        timestamp: string;
+        bids: string list list;
+        asks: string list list;
+      } [@@deriving yojson]
+    end
+
+    include T
+    include Stringable.Of_jsonable(T)
+
+    let book () = get "order_book/" [] of_yojson
+  end
+
+  let book _ =
+    let open OrderBook in
+    let of_raw { bids; asks; _ } =
+      let of_raw [p; v] = new Tick.T.t
+        ~p:(satoshis_of_string_exn p)
+        ~v:(satoshis_of_string_exn v) in
+      List.map of_raw bids, List.map of_raw asks
+    in
+    book () >>| fun b -> R.map b of_raw
+
   let trades ?since ?limit _ = return @@ R.fail `Not_implemented
   let balance _ _ = return @@ R.fail `Not_implemented
 end
