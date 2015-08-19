@@ -75,6 +75,10 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     get endpoint params >>| fun s ->
     R.(s >>= yojson_of_string >>= yojson_to_a)
 
+  let post creds endpoint params yojson_to_a =
+    post creds endpoint params >>| fun s ->
+    R.(s >>= yojson_of_string >>= yojson_to_a)
+
   let string_of_symbol = function
     | `XBTUSD -> "BTCUSD"
     | `LTCUSD -> "LTCUSD"
@@ -95,7 +99,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     end
     include T
     include Stringable.Of_jsonable(T)
-    let ticker p = get ("pubticker/" ^ string_of_symbol p) [] of_yojson
+    let ticker p = get ("/v1/pubticker/" ^ string_of_symbol p) [] of_yojson
   end
 
   let ticker p =
@@ -133,7 +137,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-    let book p = get ("book/" ^ string_of_symbol p) [] of_yojson
+    let book p = get ("/v1/book/" ^ string_of_symbol p) [] of_yojson
   end
 
   let book p =
@@ -161,7 +165,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include Stringable.Of_jsonable(T)
 
     let trades ?(since = -1L) ?(limit = -1) p =
-      get ("trades/" ^ string_of_symbol p)
+      get ("/v1/trades/" ^ string_of_symbol p)
         ((if since = -1L then []
           else ["timestamp", Int64.(to_string @@ since / 1_000_000_000L)])
          @ (if limit = -1 then []
@@ -186,7 +190,11 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     trades ?since ?limit p >>| fun p ->
     R.map p (List.map of_raw)
 
-  let balance _ _ = return @@ R.fail `Not_implemented
+  let balance creds currency =
+    post creds "/v1/balances" []
+      (fun json ->
+         Printf.eprintf "%s\n%!" @@ Yojson.Safe.to_string json;
+         R.fail `Not_implemented)
 end
 
 module Bitstamp (H: HTTP_CLIENT) = struct
@@ -270,9 +278,13 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   let book _ =
     let open OrderBook in
     let of_raw { bids; asks; _ } =
-      let of_raw [p; v] = new Tick.T.t
-        ~p:(satoshis_of_string_exn p)
-        ~v:(satoshis_of_string_exn v) in
+      let of_raw = function
+        | [p; v] ->
+          new Tick.T.t
+            ~p:(satoshis_of_string_exn p)
+            ~v:(satoshis_of_string_exn v)
+        | _ -> invalid_arg "of_raw"
+      in
       List.map of_raw bids, List.map of_raw asks
     in
     book () >>| fun b -> R.map b of_raw

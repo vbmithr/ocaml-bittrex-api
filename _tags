@@ -10,6 +10,7 @@ true: debug, bin_annot, safe_string
                           package(mt), \
                           package(rresult), \
                           package(nocrypto), \
+                          package(hex), \
                           thread
 
 <top/*.*>: package(compiler-libs.toplevel)

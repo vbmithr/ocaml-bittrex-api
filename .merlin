@@ -12,3 +12,4 @@ PKG containers
 PKG mt
 PKG rresult
 PKG nocrypto
+PKG hex

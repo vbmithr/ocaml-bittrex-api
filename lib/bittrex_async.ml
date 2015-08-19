@@ -22,7 +22,7 @@ module Bitfinex = struct
   module H = struct
     include AsyncIO
 
-    let base_uri = "https://api.bitfinex.com/v1/"
+    let base_uri = "https://api.bitfinex.com"
 
     let get endpoint params =
       let f () =
@@ -31,7 +31,32 @@ module Bitfinex = struct
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = return not_implemented
+    let buf = Bigstring.create 1024
+
+    let post { key; secret } endpoint params =
+      let f () =
+        let open Nocrypto in
+        let uri = Uri.of_string @@ base_uri ^ endpoint in
+        let params = List.map ~f:(fun (k, v) -> k, `String v) params in
+        let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) in
+        let payload =
+          `Assoc (["request", `String endpoint;
+                   "nonce", `String (Int63.to_string nonce);
+                  ] @ params) in
+        let body = Yojson.Safe.to_string payload in
+        let body_b64 = Base64.encode Cstruct.(of_string body) in
+        let signature = Hash.SHA384.hmac ~key:secret body_b64 in
+        let signature = Hex.of_cstruct signature in
+        let headers = Cohttp.Header.of_list
+            ["X-BFX-APIKEY", Cstruct.to_string key;
+             "X-BFX-PAYLOAD", Cstruct.to_string body_b64;
+             "X-BFX-SIGNATURE", match signature with `Hex sign -> sign;
+            ] in
+        let body = Cohttp_async.Body.of_string body in
+        Client.post ~headers ~body uri >>= fun (resp, body) ->
+        Body.to_string body in
+      trap_exn f
+
   end
   include Bitfinex(H)
 end
@@ -140,40 +165,33 @@ module Kraken = struct
         Body.to_string body in
       trap_exn f
 
-    let post_nonce = ref 0L
     let buf = Bigstring.create 1024
 
-    let nonce () =
-      let ret = !post_nonce in
-      Int64.(post_nonce := !post_nonce + 1L);
-      ret
-
-    let post creds endpoint params =
+    let post {key; secret} endpoint params =
       let f () =
         let open Nocrypto in
         let uri_str = base_uri ^ endpoint in
         let uri_str_len = String.length uri_str in
-        let nonce = nonce () in
+        let nonce = Time_ns.(now () |> to_int63_ns_since_epoch |> Int63.to_int64) in
         let body = Uri.encoded_of_query @@
           List.map ~f:(fun (a, b) -> a, [b]) params in
         let body_len = String.length body in
-
         let sha256 = Hash.SHA256.init () in
         EndianBigstring.BigEndian.set_int64 buf 0 nonce;
         Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:8);
         Bigstring.From_string.blit body 0 buf 0 body_len;
         Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:body_len);
-        Bigstring.From_string.blit uri_str 0 buf 0 uri_str_len;
         let sha256 = Hash.SHA256.get sha256 in
+
+        Bigstring.From_string.blit uri_str 0 buf 0 uri_str_len;
         Cstruct.(Bigstring.blit ~src:sha256.buffer ~src_pos:0
                    ~dst:buf ~dst_pos:uri_str_len ~len:sha256.len);
-        let key = Base64.decode creds.secret in
-        let sign = Hash.SHA512.hmac ~key @@
+        let sign = Hash.SHA512.hmac ~key:(Base64.decode secret) @@
           Cstruct.(of_bigarray buf ~off:0 ~len:(uri_str_len + sha256.len))
         in
         let headers = Cohttp.Header.of_list
             ["content-type", "application/x-www-form-urlencoded";
-             "API-Key", Cstruct.to_string creds.key;
+             "API-Key", Cstruct.to_string key;
              "API-Sign", Cstruct.to_string @@ Base64.encode sign;
             ] in
         let uri = Uri.of_string uri_str in
