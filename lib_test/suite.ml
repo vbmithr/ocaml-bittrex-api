@@ -34,8 +34,8 @@ let main exchanges symbols =
   let exchanges = List.filter_map exchanges ~f:Exchange.of_string in
   let symbols = List.filter_map symbols ~f:Symbol.of_string in
   let creds = Config.load ".credentials" |> function
-    | `Error _ ->
-      Log.error log "Unable to load credentials";
+    | `Error str ->
+      Log.error log "Unable to load credentials: %s" str;
       []
     | `Ok creds ->
       Log.info log "Succesfully loaded credentials";

@@ -214,18 +214,24 @@ module Generic = struct
     | `Bitstamp -> Bitstamp.symbols
     | `BTCE -> BTCE.symbols
     | `Kraken -> Kraken.symbols
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 
   let price_increment = function
     | `Bitfinex -> Bitfinex.price_increment
     | `Bitstamp -> Bitstamp.price_increment
     | `BTCE -> BTCE.price_increment
     | `Kraken -> Kraken.price_increment
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 
   let trade_increment = function
     | `Bitfinex -> Bitfinex.trade_increment
     | `Bitstamp -> Bitstamp.trade_increment
     | `BTCE -> BTCE.trade_increment
     | `Kraken -> Kraken.trade_increment
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 
   let ticker ~symbol ~exchange = match exchange with
     | `Bitfinex ->
@@ -244,6 +250,8 @@ module Generic = struct
       Kraken.(accept symbol |> function
         | None -> return unsupported
         | Some symbol -> ticker symbol)
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 
   let book ~symbol ~exchange = match exchange with
     | `Bitfinex ->
@@ -263,6 +271,8 @@ module Generic = struct
         | None -> return unsupported
         | Some symbol -> book symbol)
        :> (book_entry list * book_entry list, err) result Deferred.t)
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 
   let trades ?since ?limit ~symbol ~exchange () = match exchange with
     | `Bitfinex ->
@@ -282,10 +292,15 @@ module Generic = struct
         | None -> return unsupported
         | Some symbol -> trades ?since ?limit symbol)
        :> (trade list, err) result Deferred.t)
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 
   let balance credentials ~exchange ~currency = match exchange with
     | `Bitfinex -> Bitfinex.balance credentials currency
     | `Bitstamp -> Bitstamp.balance credentials currency
     | `BTCE -> BTCE.balance credentials currency
     | `Kraken -> Kraken.balance credentials currency
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
+
 end

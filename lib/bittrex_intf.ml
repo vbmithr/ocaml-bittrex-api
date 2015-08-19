@@ -37,6 +37,8 @@ module Exchange = struct
     | `Bitstamp [@name "bitstamp"]
     | `BTCE [@name "btce"]
     | `Kraken [@name "kraken"]
+    | `OKCoin [@name "okcoin"]
+    | `Coinbase [@name "coinbase"]
   ] [@@deriving show, enum, eq, ord, yojson]
 
   let to_string = function
@@ -44,12 +46,16 @@ module Exchange = struct
     | `Bitstamp -> "BITSTAMP"
     | `BTCE -> "BTCE"
     | `Kraken -> "KRAKEN"
+    | `OKCoin -> "OKCOIN"
+    | `Coinbase -> "COINBASE"
 
   let of_string s = String.lowercase s |> function
     | "bitfinex" | "`bitfinex" -> Some `Bitfinex
     | "bitstamp" | "`bitstamp" -> Some `Bitstamp
     | "btce" | "`btce" -> Some `BTCE
     | "kraken" | "`kraken" -> Some `Kraken
+    | "okcoin" | "`okcoin" -> Some `OKCoin
+    | "coinbase" | "`coinbase" -> Some `Coinbase
     | _ -> None
 end
 
