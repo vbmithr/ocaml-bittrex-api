@@ -24,25 +24,29 @@ module Bitfinex = struct
 
     let base_uri = "https://api.bitfinex.com"
 
-    let get endpoint params =
+    let get ~endp ~params =
       let f () =
-        let uri = Uri.of_string @@ base_uri ^ endpoint in
+        let uri = Uri.of_string @@ base_uri ^ endp in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
 
     let buf = Bigstring.create 1024
 
-    let post { key; secret } endpoint params =
+    let post ~creds:{ key; secret } ~endp ~body =
       let f () =
         let open Nocrypto in
-        let uri = Uri.of_string @@ base_uri ^ endpoint in
-        let params = List.map ~f:(fun (k, v) -> k, `String v) params in
+        let uri = Uri.of_string @@ base_uri ^ endp in
         let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) in
+        let body = Yojson.Safe.from_string body in
         let payload =
-          `Assoc (["request", `String endpoint;
-                   "nonce", `String (Int63.to_string nonce);
-                  ] @ params) in
+          match body with
+          | `Assoc params ->
+            `Assoc (["request", `String endp;
+                     "nonce", `String (Int63.to_string nonce);
+                    ] @ params)
+          | _ -> invalid_arg "bitfinex post body must be a json dict"
+        in
         let body = Yojson.Safe.to_string payload in
         let body_b64 = Base64.encode Cstruct.(of_string body) in
         let signature = Hash.SHA384.hmac ~key:secret body_b64 in
@@ -67,15 +71,15 @@ module Bitstamp = struct
 
     let base_uri = "https://www.bitstamp.net/api/"
 
-    let get endpoint params =
+    let get ~endp ~params =
       let f () =
-        let uri =  Uri.of_string @@ base_uri ^ endpoint in
+        let uri =  Uri.of_string @@ base_uri ^ endp in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body
       in
       trap_exn f
 
-    let post key endpoint params = return not_implemented
+    let post ~creds ~endp ~body = return not_implemented
   end
   include Bitstamp(H)
 end
@@ -87,14 +91,14 @@ module BTCE = struct
     let version = "3"
     let base_uri = "https://btc-e.com/api/" ^ version ^ "/"
 
-    let get endpoint _ =
+    let get ~endp ~params =
       let f () =
-        let uri = Uri.of_string @@ base_uri ^ endpoint in
+        let uri = Uri.of_string @@ base_uri ^ endp in
         Client.get uri >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
 
-    let post key endpoint params = return not_implemented
+    let post ~creds ~endp ~body = return not_implemented
   end
   include BTCE(H)
 end
@@ -158,23 +162,21 @@ module Kraken = struct
     let version = "0"
     let base_uri = "https://api.kraken.com/" ^ version ^ "/"
 
-    let get endpoint params =
+    let get ~endp ~params =
       let f () =
-        let uri = Uri.of_string @@ base_uri ^ endpoint in
+        let uri = Uri.of_string @@ base_uri ^ endp in
         Client.get Uri.(with_query' uri params) >>= fun (resp, body) ->
         Body.to_string body in
       trap_exn f
 
     let buf = Bigstring.create 1024
 
-    let post {key; secret} endpoint params =
+    let post ~creds:{key; secret} ~endp ~body =
       let f () =
         let open Nocrypto in
-        let uri_str = base_uri ^ endpoint in
+        let uri_str = base_uri ^ endp in
         let uri_str_len = String.length uri_str in
         let nonce = Time_ns.(now () |> to_int63_ns_since_epoch |> Int63.to_int64) in
-        let body = Uri.encoded_of_query @@
-          List.map ~f:(fun (a, b) -> a, [b]) params in
         let body_len = String.length body in
         let sha256 = Hash.SHA256.init () in
         EndianBigstring.BigEndian.set_int64 buf 0 nonce;

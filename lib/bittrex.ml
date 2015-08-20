@@ -202,7 +202,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-  let balance creds = post creds "/v1/balances" [] ts_of_json
+  let balance creds = post creds "/v1/balances" "" ts_of_json
 
   let of_raw t =
     new Mt.Balance.t
@@ -214,6 +214,34 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   let balance creds =
     let open Balance in
     balance creds >>| fun b -> R.map b (List.map of_raw)
+
+  module Order = struct
+    type t = {
+      symbol: string;
+      amount: float;
+      price: string;
+      exchange: string;
+      side: string;
+      type_: string [@name "type"];
+      hidden: bool;
+    } [@@deriving create,yojson]
+
+    let create ?(hidden=false)
+        ~symbol ~amount ~price ~direction ~order_type () =
+      let symbol = String.lowercase @@ string_of_symbol symbol in
+      let amount = Int64.(to_float amount /. 1e8) in
+      let price = Int64.(to_float price /. 1e8 |> string_of_float) in
+      let exchange = "bitfinex" in
+      let side = match direction with `Buy -> "buy" | `Sell -> "sell" in
+      let type_ = match order_type with
+        | `Market -> "market"
+        | `Limit -> "limit"
+        | `Stop -> "stop"
+        | `Fill_or_kill -> "fill-or-kill" in
+      create ~symbol ~amount ~price ~exchange ~side ~type_ ~hidden ()
+  end
+
+  let new_order creds order = ()
 end
 
 module Bitstamp (H: HTTP_CLIENT) = struct
@@ -899,7 +927,9 @@ module Kraken (H: HTTP_CLIENT) = struct
                       @@ of_presult (error_monad_of_yojson yojson_to_a json))) >>=
       error_of_error_monad
     in
-    post credentials endpoint params >>| fun s -> R.(s >>= handle_err)
+    let body = Uri.encoded_of_query @@
+      List.map (fun (a, b) -> a, [b]) params in
+    post credentials endpoint body >>| fun s -> R.(s >>= handle_err)
 
   module Ticker = struct
     type t = {

@@ -27,8 +27,8 @@ type credentials = { key: Cstruct.t; secret: Cstruct.t } [@@deriving create]
 module type HTTP_CLIENT = sig
   include IO
 
-  val get : string -> (string * string) list -> (string, err) result t
-  val post : credentials -> string -> (string * string) list -> (string, err) result t
+  val get : endp:string -> params:(string * string) list -> (string, err) result t
+  val post : creds:credentials -> endp:string -> body:string -> (string, err) result t
 end
 
 module Exchange = struct
