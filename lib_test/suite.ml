@@ -27,7 +27,7 @@ let run_tests syms (e, cred) =
       | None -> Deferred.unit
       | Some cred ->
         ignore_log (e_str ^ "::" ^ s_str ^ "::balance")
-          (fun () -> Generic.balance cred e `XBT)
+          (fun () -> Generic.balance cred e)
     )
 
 let main exchanges symbols =

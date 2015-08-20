@@ -190,11 +190,30 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     trades ?since ?limit p >>| fun p ->
     R.map p (List.map of_raw)
 
-  let balance creds currency =
-    post creds "/v1/balances" []
-      (fun json ->
-         Printf.eprintf "%s\n%!" @@ Yojson.Safe.to_string json;
-         R.fail `Not_implemented)
+  module Balance = struct
+    module T = struct
+      type t = {
+        type_: string [@name "type"];
+        currency: string;
+        amount: string;
+        available: string;
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
+
+  let balance creds = post creds "/v1/balances" [] ts_of_json
+
+  let of_raw t =
+    new Mt.Balance.t
+      ~currency:(CCOpt.get_exn @@ Currency.of_string t.currency)
+      ~amount:(satoshis_of_string_exn t.amount)
+      ~available:(satoshis_of_string_exn t.available)
+  end
+
+  let balance creds =
+    let open Balance in
+    balance creds >>| fun b -> R.map b (List.map of_raw)
 end
 
 module Bitstamp (H: HTTP_CLIENT) = struct
@@ -290,7 +309,7 @@ module Bitstamp (H: HTTP_CLIENT) = struct
     book () >>| fun b -> R.map b of_raw
 
   let trades ?since ?limit _ = return @@ R.fail `Not_implemented
-  let balance _ _ = return @@ R.fail `Not_implemented
+  let balance _ = return @@ R.fail `Not_implemented
 end
 
 (* module Bittrex (H: HTTP_CLIENT) = struct *)
@@ -732,7 +751,7 @@ module BTCE (H: HTTP_CLIENT) = struct
          )
       )
 
-  let balance _ _ = return @@ R.fail `Not_implemented
+  let balance _ = return @@ R.fail `Not_implemented
 end
 
 (* module Poloniex (H: HTTP_CLIENT) = struct *)
@@ -966,7 +985,7 @@ module Kraken (H: HTTP_CLIENT) = struct
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | json -> `Error (Yojson.Safe.to_string json))
 
-  let balance creds currency =
+  let balance creds =
     post creds "private/Balance" [] (fun json -> `Error "")
 end
 

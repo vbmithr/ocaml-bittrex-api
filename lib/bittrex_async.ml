@@ -313,11 +313,11 @@ module Generic = struct
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 
-  let balance credentials ~exchange ~currency = match exchange with
-    | `Bitfinex -> Bitfinex.balance credentials currency
-    | `Bitstamp -> Bitstamp.balance credentials currency
-    | `BTCE -> BTCE.balance credentials currency
-    | `Kraken -> Kraken.balance credentials currency
+  let balance credentials ~exchange = match exchange with
+    | `Bitfinex -> Bitfinex.balance credentials
+    | `Bitstamp -> Bitstamp.balance credentials
+    | `BTCE -> BTCE.balance credentials
+    | `Kraken -> Kraken.balance credentials
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 

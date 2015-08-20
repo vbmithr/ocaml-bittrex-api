@@ -78,15 +78,6 @@ module Config = struct
       )
 end
 
-module Currency = struct
-  type t = [
-    | `XBT
-    | `LTC
-    | `EUR
-    | `USD
-  ] [@@deriving show, enum, eq, ord]
-end
-
 module Symbol = struct
   type t = [
     | `XBTUSD
@@ -123,7 +114,6 @@ module Symbol = struct
     | `XBTLTC -> "Bitcoin / Litecoin"
 end
 
-
 (** Abstract exchange type. *)
 
 module type EXCHANGE = sig
@@ -151,7 +141,7 @@ module type EXCHANGE = sig
         will not contain trades older than [since], where [since] is
         an unix timestamp in nanoseconds. *)
 
-  val balance : credentials -> Currency.t -> (int, err) result t
+  val balance : credentials -> (int64 Balance.t list, err) result t
 end
 
 (** Concrete exchange types. *)
@@ -202,5 +192,5 @@ module type GENERIC = sig
     exchange:[< Exchange.t] ->  unit -> (trade list, err) result t
 
   val balance : credentials ->
-    exchange:Exchange.t -> currency:Currency.t -> (int, err) result t
+    exchange:Exchange.t -> (int64 Balance.t list, err) result t
 end
