@@ -12,7 +12,7 @@ package "core" (
 )
 
 package "async" (
-  requires = "bittrex.core async cohttp.async nocrypto threads"
+  requires = "bittrex.core async cohttp.async nocrypto hex threads"
   archive(byte) = "bittrex_async.cma"
   archive(byte, plugin) = "bittrex_async.cma"
   archive(native) = "bittrex_async.cmxa"
