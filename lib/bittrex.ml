@@ -75,8 +75,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     get endpoint params >>| fun s ->
     R.(s >>= yojson_of_string >>= yojson_to_a)
 
-  let post creds endpoint params yojson_to_a =
-    post creds endpoint params >>| fun s ->
+  let post creds endpoint body yojson_to_a =
+    post creds endpoint body >>| fun s ->
     R.(s >>= yojson_of_string >>= yojson_to_a)
 
   let string_of_symbol = function
@@ -241,7 +241,17 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       create ~symbol ~amount ~price ~exchange ~side ~type_ ~hidden ()
   end
 
-  let new_order creds order = ()
+  let new_order creds order =
+    let open Order in
+    let order =
+      create ~symbol:order#symbol ~amount:order#amount
+        ~price:order#price ~direction:order#direction
+        ~order_type:order#order_type () in
+    let order_str = to_yojson order |> Yojson.Safe.to_string in
+    let ret_of_json = function
+      | `Assoc ["order_id", `Int i] -> R.ok i
+      | json -> R.fail @@ `Json_error (Yojson.Safe.to_string json) in
+    post creds "/v1/order/new" order_str ret_of_json
 end
 
 module Bitstamp (H: HTTP_CLIENT) = struct
