@@ -8,5 +8,6 @@ let () =
     Pkg.lib ~exts:Exts.library "lib/bittrex_intf";
     Pkg.lib ~exts:Exts.library "lib/bittrex";
     Pkg.lib ~exts:Exts.module_library "lib/bittrex_async";
-    Pkg.bin ~auto:true "lib_test/suite"
+    Pkg.bin ~auto:true "lib_test/suite";
+    Pkg.bin ~auto:true "lib_test/shell_bfx"
   ]

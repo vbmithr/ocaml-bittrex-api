@@ -22,7 +22,11 @@ let internal_error str = R.error (`Internal_error str)
 let unsupported = R.error `Unsupported_by_exchange
 let not_implemented = R.error `Not_implemented
 
-type credentials = { key: Cstruct.t; secret: Cstruct.t } [@@deriving create]
+type credentials = { key: Cstruct.t; secret: Cstruct.t }
+let create_credentials ~key ~secret =
+  let key = Cstruct.of_string key in
+  let secret = Cstruct.of_string secret in
+  { key; secret; }
 
 module type HTTP_CLIENT = sig
   include IO
