@@ -56,6 +56,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
+  type order_types = [ `Market | `Limit | `Stop | `Fill_or_kill ]
+  type time_in_force = [ `Good_till_canceled ]
 
   let kind = `Bitfinex
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
@@ -237,15 +239,19 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         | `Market -> "market"
         | `Limit -> "limit"
         | `Stop -> "stop"
-        | `Fill_or_kill -> "fill-or-kill" in
+        | `Fill_or_kill -> "fill-or-kill"
+      in
       create ~symbol ~amount ~price ~exchange ~side ~type_ ~hidden ()
   end
 
   let new_order creds order =
     let open Order in
     let order =
-      create ~symbol:order#symbol ~amount:order#amount
-        ~price:order#price ~direction:order#direction
+      create
+        ~symbol:order#symbol
+        ~price:order#price
+        ~amount:order#amount
+        ~direction:order#direction
         ~order_type:order#order_type () in
     let order_str = to_yojson order |> Yojson.Safe.to_string in
     let ret_of_json = function
@@ -261,6 +267,8 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
+  type order_types = [`Limit]
+  type time_in_force = [`Good_till_canceled]
 
   let kind = `Bitstamp
   let symbols = [`XBTUSD]
@@ -348,6 +356,7 @@ module Bitstamp (H: HTTP_CLIENT) = struct
 
   let trades ?since ?limit _ = return @@ R.fail `Not_implemented
   let balance _ = return @@ R.fail `Not_implemented
+  let new_order _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Bittrex (H: HTTP_CLIENT) = struct *)
@@ -656,6 +665,8 @@ module BTCE (H: HTTP_CLIENT) = struct
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
+  type order_types = [`Limit]
+  type time_in_force = [`Good_till_canceled]
 
   let kind = `BTCE
 
@@ -790,6 +801,7 @@ module BTCE (H: HTTP_CLIENT) = struct
       )
 
   let balance _ = return @@ R.fail `Not_implemented
+  let new_order _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Poloniex (H: HTTP_CLIENT) = struct *)
@@ -887,6 +899,8 @@ module Kraken (H: HTTP_CLIENT) = struct
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = (int64, int64) Tick.TTS.t
   type nonrec credentials = credentials
+  type order_types = [`Market | `Limit]
+  type time_in_force = [`Good_till_canceled]
 
   let kind = `Kraken
   let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `XBTLTC]
@@ -1027,6 +1041,8 @@ module Kraken (H: HTTP_CLIENT) = struct
 
   let balance creds =
     post creds "private/Balance" [] (fun json -> `Error "")
+
+  let new_order _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Hitbtc (H: HTTP_CLIENT) = struct *)

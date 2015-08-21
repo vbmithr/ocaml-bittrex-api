@@ -78,41 +78,6 @@ module Config = struct
       )
 end
 
-module Symbol = struct
-  type t = [
-    | `XBTUSD
-    | `XBTEUR
-    | `LTCUSD
-    | `LTCEUR
-    | `LTCXBT
-    | `XBTLTC
-  ] [@@deriving show, enum, eq, ord]
-
-  let to_string = function
-    | `XBTUSD -> "XBTUSD"
-    | `XBTEUR -> "XBTEUR"
-    | `LTCUSD -> "LTCUSD"
-    | `LTCEUR -> "LTCEUR"
-    | `LTCXBT -> "LTCXBT"
-    | `XBTLTC -> "XBTLTC"
-
-  let of_string s = String.lowercase s |> function
-    | "xbtusd" | "`xbtusd" | "btcusd" -> Some `XBTUSD
-    | "ltcusd" | "`ltcusd" -> Some `LTCUSD
-    | "xbteur" | "`xbteur" | "btceur" -> Some `XBTEUR
-    | "ltceur" | "`ltceur" -> Some `LTCEUR
-    | "ltcxbt" | "`ltcxbt" | "ltcbtc" -> Some `LTCXBT
-    | "xbtltc" | "`xbtltc" | "btcltc" -> Some `XBTLTC
-    | _ -> None
-
-  let descr = function
-    | `XBTUSD -> "Bitcoin / US Dollar"
-    | `XBTEUR -> "Bitcoin / Euro"
-    | `LTCUSD -> "Litecoin / US Dollar"
-    | `LTCEUR -> "Litecoin / Euro"
-    | `LTCXBT -> "Litecoin / Bitcoin"
-    | `XBTLTC -> "Bitcoin / Litecoin"
-end
 
 (** Abstract exchange type. *)
 
@@ -122,6 +87,8 @@ module type EXCHANGE = sig
   type ticker
   type book_entry
   type trade
+  type order_types
+  type time_in_force
 
   val kind : Exchange.t
   val accept : Symbol.t -> symbol option
@@ -142,6 +109,9 @@ module type EXCHANGE = sig
         an unix timestamp in nanoseconds. *)
 
   val balance : credentials -> (int64 Balance.t list, err) result t
+  val new_order : credentials ->
+    (int64, symbol, order_types, time_in_force) Order.t ->
+    (int, err) result t
 end
 
 (** Concrete exchange types. *)
@@ -151,18 +121,24 @@ module type BITFINEX = EXCHANGE
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
    and type trade = (int64, int64) Tick.TDTS.t
+   and type order_types = [`Market | `Limit | `Stop | `Fill_or_kill]
+   and type time_in_force = [ `Good_till_canceled]
 
 module type BITSTAMP = EXCHANGE
   with type symbol = [`XBTUSD]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
    and type trade = (int64, int64) Tick.TDTS.t
+   and type order_types = [`Limit]
+   and type time_in_force = [`Good_till_canceled]
 
 module type BTCE = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `LTCXBT]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
    and type trade = (int64, int64) Tick.TDTS.t
+   and type order_types = [`Limit]
+   and type time_in_force = [`Good_till_canceled]
 
 module type KRAKEN = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
@@ -171,6 +147,8 @@ module type KRAKEN = EXCHANGE
    and type trade = < d : [ `Ask | `Bid | `Unset ];
                       kind : [ `Limit | `Market | `Unset ]; misc : string;
                       p : int64; ts : int64; v : int64 >
+   and type order_types = [`Market | `Limit]
+   and type time_in_force = [`Good_till_canceled]
 
 (** Generic exchange type. *)
 
