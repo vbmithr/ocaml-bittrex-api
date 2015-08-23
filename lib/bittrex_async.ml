@@ -7,6 +7,9 @@ open Bittrex
 
 include Bittrex_intf
 
+let log = Log.(create ~level:`Debug ~output:[Output.(stderr ())]
+                 ~on_error:`Raise)
+
 let trap_exn f =
   try_with f >>| function
   | Ok r -> Rresult.Ok r
@@ -38,7 +41,9 @@ module Bitfinex = struct
         let open Nocrypto in
         let uri = Uri.of_string @@ base_uri ^ endp in
         let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) in
-        let body = Yojson.Safe.from_string body in
+        let body =
+          try Yojson.Safe.from_string body
+          with _ -> `Assoc [] in
         let payload =
           match body with
           | `Assoc params ->
@@ -58,7 +63,10 @@ module Bitfinex = struct
             ] in
         let body = Cohttp_async.Body.of_string body in
         Client.post ~headers ~body uri >>= fun (resp, body) ->
-        Body.to_string body in
+        Body.to_string body >>| fun body ->
+        Log.debug log "%s" body;
+        body
+      in
       trap_exn f
 
   end

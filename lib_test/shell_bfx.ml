@@ -2,6 +2,7 @@ open Rresult
 open Core.Std
 open Async.Std
 
+open Mt
 open Bittrex_async
 
 let log = Log.(create ~level:`Debug ~output:[Output.(stderr ())]
@@ -23,9 +24,11 @@ let main () =
        | "BALANCE" ->
          (Bitfinex.balance creds >>| function
            | Ok balances ->
-             List.iter ~f:(fun _ -> Printf.printf  "Bleh\n%!") balances
+             List.iter
+               ~f:(fun b -> Log.info log "%s" @@ Balance.show Int64.pp b)
+               balances
            | Error err ->
-             Printf.printf "Error: %s\n%!" @@ show_err err
+             Log.error log "%s" @@ show_err err
          )
          >>= read_loop
        | command ->

@@ -22,11 +22,14 @@ module Stringable = struct
     let ts_of_json = function
       | `List ts ->
         begin
-          let ts = CCList.filter_map
-              (fun t -> match of_yojson t with
-                 | Ok a -> Some a
-                 | Error _ -> None) ts
-          in Ok ts
+          try
+            let ts = CCList.filter_map
+                (fun t -> match of_yojson t with
+                   | Ok a -> Some a
+                   | Error (`Json_error msg) -> failwith msg)
+                ts
+            in Ok ts
+          with Failure msg -> Error (`Json_error msg)
         end
       | json -> Error (`Json_error (Yojson.Safe.to_string json))
   end
@@ -195,7 +198,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   module Balance = struct
     module T = struct
       type t = {
-        type_: string [@name "type"];
+        type_: string [@key "type"];
         currency: string;
         amount: string;
         available: string;
@@ -204,18 +207,24 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-  let balance creds = post creds "/v1/balances" "" ts_of_json
+    let balance creds = post creds "/v1/balances" "" ts_of_json
 
-  let of_raw t =
-    new Mt.Balance.t
-      ~currency:(CCOpt.get_exn @@ Currency.of_string t.currency)
-      ~amount:(satoshis_of_string_exn t.amount)
-      ~available:(satoshis_of_string_exn t.available)
+    let of_raw t =
+      if t.type_ = "trading" then
+        Some (new Mt.Balance.t
+          ~currency:(CCOpt.get_exn @@ Currency.of_string t.currency)
+          ~amount:(satoshis_of_string_exn t.amount)
+          ~available:(satoshis_of_string_exn t.available))
+      else None
   end
 
   let balance creds =
     let open Balance in
-    balance creds >>| fun b -> R.map b (List.map of_raw)
+    balance creds >>| fun b -> R.map b (CCList.filter_map of_raw)
+
+  let positions creds =
+    post creds "/v1/positions" ""
+      (fun json -> R.fail @@ `Not_implemented)
 
   module Order = struct
     type t = {
