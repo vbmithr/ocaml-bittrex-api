@@ -21,12 +21,61 @@ let main () =
     | `Ok msg ->
       let words = String.split msg ~on:' ' in
       (match List.hd_exn words with
-       | "BALANCE" ->
+       | "balance" ->
          (Bitfinex.balance creds >>| function
            | Ok balances ->
              List.iter
                ~f:(fun b -> Log.info log "%s" @@ Balance.show Int64.pp b)
                balances
+           | Error err ->
+             Log.error log "%s" @@ show_err err
+         )
+         >>= read_loop
+       | "positions" ->
+         (Bitfinex.positions creds >>| function
+           | Ok positions ->
+             Log.error log "Not impl."
+           | Error err ->
+             Log.error log "%s" @@ show_err err
+         )
+         >>= read_loop
+       | "status" ->
+         let order_id = List.nth_exn words 1 |> int_of_string in
+         (Bitfinex.order_status creds order_id >>| function
+           | Ok status ->
+             Log.error log "Not impl."
+           | Error err ->
+             Log.error log "%s" @@ show_err err
+         )
+         >>= read_loop
+       | "buy" ->
+         let symbol =
+           Option.(List.nth_exn words 1 |> Symbol.of_string >>= Bitfinex.accept) in
+         let symbol = Option.value_exn symbol in
+         let amount = List.nth_exn words 2 |> satoshis_of_string_exn in
+         let price = List.nth_exn words 3 |> satoshis_of_string_exn in
+         let order = new Order.t ~price ~amount ~symbol ~client_id:""
+           ~direction:`Buy ~order_type:`Limit ~time_in_force:`Good_till_canceled ()
+         in
+         (Bitfinex.new_order creds order >>| function
+           | Ok status ->
+             Log.error log "Not impl."
+           | Error err ->
+             Log.error log "%s" @@ show_err err
+         )
+         >>= read_loop
+       | "sell" ->
+         let symbol =
+           Option.(List.nth_exn words 1 |> Symbol.of_string >>= Bitfinex.accept) in
+         let symbol = Option.value_exn symbol in
+         let amount = List.nth_exn words 2 |> satoshis_of_string_exn in
+         let price = List.nth_exn words 3 |> satoshis_of_string_exn in
+         let order = new Order.t ~price ~amount ~symbol ~client_id:""
+           ~direction:`Sell ~order_type:`Limit ~time_in_force:`Good_till_canceled ()
+         in
+         (Bitfinex.new_order creds order >>| function
+           | Ok status ->
+             Log.error log "Not impl."
            | Error err ->
              Log.error log "%s" @@ show_err err
          )

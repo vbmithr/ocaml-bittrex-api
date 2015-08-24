@@ -42,16 +42,6 @@ module Int64 = struct
   let ( / ) = div
 end
 
-let satoshis_of_float_exn f =
-  let s = Printf.sprintf "%.8f" f in
-  let i = String.index s '.' in
-  let a = Int64.of_string @@ String.sub s 0 i in
-  let b = Int64.of_string @@ String.sub s (i+1) (String.length s - i - 1) in
-  Int64.(a * 100_000_000L + b)
-
-let satoshis_of_string_exn s =
-  satoshis_of_float_exn @@ float_of_string s
-
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
   type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
@@ -223,25 +213,44 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     balance creds >>| fun b -> R.map b (CCList.filter_map of_raw)
 
   let positions creds =
-    post creds "/v1/positions" ""
-      (fun json -> R.fail @@ `Not_implemented)
+    post creds "/v1/positions" "" (fun json -> R.fail `Not_implemented)
+
+  let orders creds =
+    post creds "/v1/orders" "" (fun json -> R.fail `Not_implemented)
 
   module Order = struct
-    type t = {
+    type request = {
       symbol: string;
-      amount: float;
+      amount: string;
       price: string;
       exchange: string;
       side: string;
-      type_: string [@name "type"];
+      type_: string [@key "type"];
       hidden: bool;
+    } [@@deriving create,yojson]
+
+    type status = {
+      symbol: string;
+      exchange: string;
+      price: float;
+      avg_exec_price: float;
+      side: string;
+      type_: string [@key "type"];
+      timestamp: int;
+      live: bool;
+      cancelled: bool;
+      hidden: bool;
+      forced: bool;
+      executed_amount: float;
+      remaining_amount: float;
+      original_amount: float;
     } [@@deriving create,yojson]
 
     let create ?(hidden=false)
         ~symbol ~amount ~price ~direction ~order_type () =
       let symbol = String.lowercase @@ string_of_symbol symbol in
-      let amount = Int64.(to_float amount /. 1e8) in
-      let price = Int64.(to_float price /. 1e8 |> string_of_float) in
+      let amount = Format.sprintf "%.8f" @@ Int64.(to_float amount /. 1e8) in
+      let price = Format.sprintf "%.8f" @@ Int64.(to_float price /. 1e8) in
       let exchange = "bitfinex" in
       let side = match direction with `Buy -> "buy" | `Sell -> "sell" in
       let type_ = match order_type with
@@ -250,7 +259,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         | `Stop -> "stop"
         | `Fill_or_kill -> "fill-or-kill"
       in
-      create ~symbol ~amount ~price ~exchange ~side ~type_ ~hidden ()
+      create_request ~symbol ~amount ~price ~exchange ~side ~type_ ~hidden ()
   end
 
   let new_order creds order =
@@ -262,11 +271,16 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         ~amount:order#amount
         ~direction:order#direction
         ~order_type:order#order_type () in
-    let order_str = to_yojson order |> Yojson.Safe.to_string in
+    let order_str = request_to_yojson order |> Yojson.Safe.to_string in
     let ret_of_json = function
       | `Assoc ["order_id", `Int i] -> R.ok i
       | json -> R.fail @@ `Json_error (Yojson.Safe.to_string json) in
     post creds "/v1/order/new" order_str ret_of_json
+
+  let order_status creds order_id =
+    post creds "/v1/order/status"
+      Yojson.Safe.(to_string @@ `Assoc ["order_id", `Int order_id])
+      (fun json -> R.fail `Not_implemented)
 end
 
 module Bitstamp (H: HTTP_CLIENT) = struct
@@ -366,6 +380,8 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   let trades ?since ?limit _ = return @@ R.fail `Not_implemented
   let balance _ = return @@ R.fail `Not_implemented
   let new_order _ _ = return @@ R.fail `Not_implemented
+  let positions _ = return @@ R.fail `Not_implemented
+  let order_status _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Bittrex (H: HTTP_CLIENT) = struct *)
@@ -811,6 +827,8 @@ module BTCE (H: HTTP_CLIENT) = struct
 
   let balance _ = return @@ R.fail `Not_implemented
   let new_order _ _ = return @@ R.fail `Not_implemented
+  let positions _ = return @@ R.fail `Not_implemented
+  let order_status _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Poloniex (H: HTTP_CLIENT) = struct *)
@@ -1052,6 +1070,8 @@ module Kraken (H: HTTP_CLIENT) = struct
     post creds "private/Balance" [] (fun json -> `Error "")
 
   let new_order _ _ = return @@ R.fail `Not_implemented
+  let positions creds = return @@ R.fail `Not_implemented
+  let order_status _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Hitbtc (H: HTTP_CLIENT) = struct *)

@@ -39,6 +39,7 @@ module Bitfinex = struct
     let post ~creds:{ key; secret } ~endp ~body =
       let f () =
         let open Nocrypto in
+        Log.debug log "-> %s" body;
         let uri = Uri.of_string @@ base_uri ^ endp in
         let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) in
         let body =
@@ -64,7 +65,7 @@ module Bitfinex = struct
         let body = Cohttp_async.Body.of_string body in
         Client.post ~headers ~body uri >>= fun (resp, body) ->
         Body.to_string body >>| fun body ->
-        Log.debug log "%s" body;
+        Log.debug log "<- %s" body;
         body
       in
       trap_exn f

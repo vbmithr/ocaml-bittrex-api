@@ -22,6 +22,16 @@ let internal_error str = R.error (`Internal_error str)
 let unsupported = R.error `Unsupported_by_exchange
 let not_implemented = R.error `Not_implemented
 
+let satoshis_of_float_exn f =
+  let s = Printf.sprintf "%.8f" f in
+  let i = String.index s '.' in
+  let a = Int64.of_string @@ String.sub s 0 i in
+  let b = Int64.of_string @@ String.sub s (i+1) (String.length s - i - 1) in
+  Int64.(add b @@ mul a 100_000_000L)
+
+let satoshis_of_string_exn s =
+  satoshis_of_float_exn @@ float_of_string s
+
 type credentials = { key: Cstruct.t; secret: Cstruct.t }
 let create_credentials ~key ~secret =
   let key = Cstruct.of_string key in
@@ -113,9 +123,11 @@ module type EXCHANGE = sig
         an unix timestamp in nanoseconds. *)
 
   val balance : credentials -> (int64 Balance.t list, err) result t
+  val positions : credentials -> (Symbol.t * int64 Mt.Tick.T.t list, err) result t
   val new_order : credentials ->
     (int64, symbol, order_types, time_in_force) Order.t ->
     (int, err) result t
+  val order_status : credentials -> int -> (unit, err) result t
 end
 
 (** Concrete exchange types. *)
