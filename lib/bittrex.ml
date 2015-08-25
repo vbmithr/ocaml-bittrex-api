@@ -45,12 +45,15 @@ end
 module Bitfinex (H: HTTP_CLIENT) = struct
   include H
   type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
+  type exchange = [`Bitfinex | `Bitstamp]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
-  type order_types = [ `Market | `Limit | `Stop | `Fill_or_kill ]
-  type time_in_force = [ `Good_till_canceled ]
+  type order_types = [`Market | `Limit | `Stop ]
+  type time_in_force = [`Good_till_canceled | `Fill_or_kill]
+  type order = (int64, symbol, order_types, time_in_force) Order.t
+  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
   let kind = `Bitfinex
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
@@ -62,6 +65,16 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | `XBTEUR -> None
     | `LTCEUR -> None
     | `XBTLTC -> None
+
+  let symbol_of_string_exn symbol =
+    CCOpt.(Symbol.of_string symbol >>= accept |> get_exn)
+
+  let exchange_of_string_exn exchange =
+    let accept_exchange = function
+      | `Bitfinex -> Some `Bitfinex
+      | `Bitstamp -> Some `Bitstamp
+      | _ -> None in
+    CCOpt.(Exchange.of_string exchange >>= accept_exchange |> get_exn)
 
   let price_increment = 1_000_000
   let trade_increment = 1
@@ -78,6 +91,45 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | `XBTUSD -> "BTCUSD"
     | `LTCUSD -> "LTCUSD"
     | `LTCXBT -> "LTCBTC"
+
+  let bidask_of_string = function
+    | "buy" -> `Bid
+    | "sell" -> `Ask
+    | _ -> invalid_arg "bidask_of_string"
+
+  let string_of_bidask = function
+    | `Bid -> "buy"
+    | `Ask -> "sell"
+
+  let side_of_string = function
+    | "buy" -> `Buy
+    | "sell" -> `Sell
+    | _ -> invalid_arg "buysell_of_string"
+
+  let string_of_side = function
+    | `Buy -> "buy"
+    | `Sell -> "sell"
+
+  let ot_tif_of_string = function
+    | "market" -> `Market, `Good_till_canceled
+    | "limit" -> `Limit, `Good_till_canceled
+    | "stop" -> `Stop, `Good_till_canceled
+    | "fill-or-kill" -> `Limit, `Fill_or_kill
+    | _ -> invalid_arg "ot_tif_of_string"
+
+  let string_of_ot_tif ~order_type ~time_in_force =
+    match order_type, time_in_force with
+    | `Market, `Good_till_canceled -> "market"
+    | `Limit, `Good_till_canceled -> "limit"
+    | `Stop, `Good_till_canceled -> "stop"
+    | `Limit, `Fill_or_kill -> "fill-or-kill"
+    | _ -> invalid_arg "string_of_ot_tif"
+
+  let timestamp_of_string s =
+    let ts = Bytes.make 19 '0' in
+    Bytes.blit_string s 0 ts 0 10;
+    Bytes.blit_string s 11 ts 10 String.(length s - 11);
+    ts |> Bytes.unsafe_to_string |> Int64.of_string
 
   module Ticker = struct
     module T = struct
@@ -107,10 +159,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let low = satoshis_of_string_exn r.low in
       let high = satoshis_of_string_exn r.high in
       let volume = satoshis_of_string_exn r.volume in
-      let ts = Bytes.make 19 '0' in
-      Bytes.blit_string r.timestamp 0 ts 0 10;
-      Bytes.blit_string r.timestamp 11 ts 10 String.(length r.timestamp - 11);
-      let ts = ts |> Bytes.unsafe_to_string |> Int64.of_string in
+      let ts = timestamp_of_string r.timestamp in
       new Mt.Ticker.Tvwap.t ~bid ~ask ~high ~low ~volume ~vwap ~last ~ts in
     ticker p >>| fun t -> R.map t of_raw
 
@@ -167,17 +216,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
              else ["limit_trades", string_of_int limit]))
         ts_of_json
 
-    let kind_of_raw = function
-      | "sell" -> `Ask
-      | "buy" -> `Bid
-      | _ -> `Unset
-
     let of_raw t =
       new Tick.TDTS.t
         ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
         ~p:(satoshis_of_string_exn t.price)
         ~v:(satoshis_of_string_exn t.amount)
-        ~d:(kind_of_raw t.type_)
+        ~d:(bidask_of_string t.type_)
   end
 
   let trades ?since ?limit p =
@@ -212,12 +256,6 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     let open Balance in
     balance creds >>| fun b -> R.map b (CCList.filter_map of_raw)
 
-  let positions creds =
-    post creds "/v1/positions" "" (fun json -> R.fail `Not_implemented)
-
-  let orders creds =
-    post creds "/v1/orders" "" (fun json -> R.fail `Not_implemented)
-
   module Order = struct
     type request = {
       symbol: string;
@@ -226,51 +264,83 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       exchange: string;
       side: string;
       type_: string [@key "type"];
-      hidden: bool;
+      is_hidden: bool;
     } [@@deriving create,yojson]
 
-    type status = {
-      symbol: string;
-      exchange: string;
-      price: float;
-      avg_exec_price: float;
-      side: string;
-      type_: string [@key "type"];
-      timestamp: int;
-      live: bool;
-      cancelled: bool;
-      hidden: bool;
-      forced: bool;
-      executed_amount: float;
-      remaining_amount: float;
-      original_amount: float;
-    } [@@deriving create,yojson]
+    module Status = struct
+      module T = struct
+        type t = {
+          id: int;
+          order_id: (int [@default 0]);
+          symbol: string;
+          exchange: string;
+          price: string;
+          avg_execution_price: string;
+          side: string;
+          type_: string [@key "type"];
+          timestamp: string;
+          is_live: bool;
+          is_cancelled: bool;
+          is_hidden: bool;
+          was_forced: bool;
+          executed_amount: string;
+          remaining_amount: string;
+          original_amount: string;
+        } [@@deriving create,yojson]
+      end
+      include T
+      include Stringable.Of_jsonable(T)
 
-    let create ?(hidden=false)
-        ~symbol ~amount ~price ~direction ~order_type () =
+      let of_raw s =
+        let side = side_of_string s.side in
+        let order_type, time_in_force = ot_tif_of_string s.type_ in
+        new Mt.Order.status
+          ~ts:(timestamp_of_string s.timestamp)
+          ~symbol:(symbol_of_string_exn s.symbol)
+          ~exchange:(exchange_of_string_exn s.exchange)
+          ~exchange_order_id:s.id
+          ~p1:(satoshis_of_string_exn s.price)
+          ~avg_fill_price:(satoshis_of_string_exn s.avg_execution_price)
+          ~side
+          ~order_type ~time_in_force
+          ~order_qty:(satoshis_of_string_exn s.original_amount)
+          ~filled_qty:(satoshis_of_string_exn s.executed_amount)
+          ~remaining_qty:(satoshis_of_string_exn s.remaining_amount)
+          ~status:`Open
+          ~update_reason:`New_order_accepted
+          ()
+    end
+
+    let create_request ?(is_hidden=false)
+        ~symbol ~amount ~price ~side ~order_type ~time_in_force () =
       let symbol = String.lowercase @@ string_of_symbol symbol in
       let amount = Format.sprintf "%.8f" @@ Int64.(to_float amount /. 1e8) in
       let price = Format.sprintf "%.8f" @@ Int64.(to_float price /. 1e8) in
       let exchange = "bitfinex" in
-      let side = match direction with `Buy -> "buy" | `Sell -> "sell" in
-      let type_ = match order_type with
-        | `Market -> "market"
-        | `Limit -> "limit"
-        | `Stop -> "stop"
-        | `Fill_or_kill -> "fill-or-kill"
-      in
-      create_request ~symbol ~amount ~price ~exchange ~side ~type_ ~hidden ()
+      let side = string_of_side side in
+      let type_ = string_of_ot_tif order_type time_in_force in
+      create_request ~symbol ~amount ~price ~exchange ~side ~type_ ~is_hidden ()
   end
+
+  let positions creds =
+    post creds "/v1/positions" "" (fun json -> R.fail `Not_implemented)
+
+  let orders creds =
+    let open Order.Status in
+    post creds "/v1/orders" "" ts_of_json >>| fun statuses ->
+    R.map statuses (List.map of_raw)
 
   let new_order creds order =
     let open Order in
     let order =
-      create
+      create_request
         ~symbol:order#symbol
         ~price:order#price
         ~amount:order#amount
-        ~direction:order#direction
-        ~order_type:order#order_type () in
+        ~side:order#side
+        ~order_type:order#order_type
+        ~time_in_force:order#time_in_force ()
+    in
     let order_str = request_to_yojson order |> Yojson.Safe.to_string in
     let ret_of_json = function
       | `Assoc ["order_id", `Int i] -> R.ok i
@@ -278,20 +348,32 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     post creds "/v1/order/new" order_str ret_of_json
 
   let order_status creds order_id =
+    let open Order.Status in
     post creds "/v1/order/status"
       Yojson.Safe.(to_string @@ `Assoc ["order_id", `Int order_id])
-      (fun json -> R.fail `Not_implemented)
+      of_yojson >>| fun status ->
+    R.map status of_raw
+
+  let cancel_order creds order_id =
+    let open Order.Status in
+    post creds "/v1/order/cancel"
+      Yojson.Safe.(to_string @@ `Assoc ["order_id", `Int order_id])
+      of_yojson >>| fun status ->
+    R.map status (fun (_:t) -> ())
 end
 
 module Bitstamp (H: HTTP_CLIENT) = struct
   include H
   type symbol = [`XBTUSD]
+  type exchange = [`Bitstamp]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
+  type order = (int64, symbol, order_types, time_in_force) Order.t
+  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
   let kind = `Bitstamp
   let symbols = [`XBTUSD]
@@ -381,7 +463,9 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   let balance _ = return @@ R.fail `Not_implemented
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented
+  let orders _ = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
+  let cancel_order _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Bittrex (H: HTTP_CLIENT) = struct *)
@@ -686,12 +770,15 @@ end
 module BTCE (H: HTTP_CLIENT) = struct
   include H
   type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `LTCXBT]
+  type exchange = [`BTCE]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
+  type order = (int64, symbol, order_types, time_in_force) Order.t
+  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
   let kind = `BTCE
 
@@ -828,7 +915,9 @@ module BTCE (H: HTTP_CLIENT) = struct
   let balance _ = return @@ R.fail `Not_implemented
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented
+  let orders _ = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
+  let cancel_order _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Poloniex (H: HTTP_CLIENT) = struct *)
@@ -923,11 +1012,14 @@ end
 module Kraken (H: HTTP_CLIENT) = struct
   include H
   type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
+  type exchange = [`Kraken]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = (int64, int64) Tick.TTS.t
   type nonrec credentials = credentials
   type order_types = [`Market | `Limit]
   type time_in_force = [`Good_till_canceled]
+  type order = (int64, symbol, order_types, time_in_force) Order.t
+  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
   let kind = `Kraken
   let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `XBTLTC]
@@ -1070,8 +1162,10 @@ module Kraken (H: HTTP_CLIENT) = struct
     post creds "private/Balance" [] (fun json -> `Error "")
 
   let new_order _ _ = return @@ R.fail `Not_implemented
-  let positions creds = return @@ R.fail `Not_implemented
+  let positions _ = return @@ R.fail `Not_implemented
+  let orders _ = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
+  let cancel_order _ _ = return @@ R.fail `Not_implemented
 end
 
 (* module Hitbtc (H: HTTP_CLIENT) = struct *)

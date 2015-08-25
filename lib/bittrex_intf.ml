@@ -71,6 +71,10 @@ module Exchange = struct
     | "okcoin" | "`okcoin" -> Some `OKCoin
     | "coinbase" | "`coinbase" -> Some `Coinbase
     | _ -> None
+
+  let of_string_exn s = match of_string s with
+    | None -> invalid_arg "Exchange.of_string_exn"
+    | Some e -> e
 end
 
 module Config = struct
@@ -98,13 +102,16 @@ end
 module type EXCHANGE = sig
   include IO
   type symbol
+  type exchange
   type ticker
   type book_entry
   type trade
   type order_types
   type time_in_force
+  type order = (int64, symbol, order_types, time_in_force) Order.t
+  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
-  val kind : Exchange.t
+  (* val kind : Exchange.t *)
   val accept : Symbol.t -> symbol option
   val symbols : symbol list
 
@@ -124,10 +131,10 @@ module type EXCHANGE = sig
 
   val balance : credentials -> (int64 Balance.t list, err) result t
   val positions : credentials -> (Symbol.t * int64 Mt.Tick.T.t list, err) result t
-  val new_order : credentials ->
-    (int64, symbol, order_types, time_in_force) Order.t ->
-    (int, err) result t
-  val order_status : credentials -> int -> (unit, err) result t
+  val orders : credentials -> (order_status list, err) result t
+  val new_order : credentials -> order -> (int, err) result t
+  val order_status : credentials -> int -> (order_status, err) result t
+  val cancel_order : credentials -> int -> (unit, err) result t
 end
 
 (** Concrete exchange types. *)
@@ -137,8 +144,8 @@ module type BITFINEX = EXCHANGE
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
    and type trade = (int64, int64) Tick.TDTS.t
-   and type order_types = [`Market | `Limit | `Stop | `Fill_or_kill]
-   and type time_in_force = [ `Good_till_canceled]
+   and type order_types = [`Market | `Limit | `Stop]
+   and type time_in_force = [ `Good_till_canceled | `Fill_or_kill]
 
 module type BITSTAMP = EXCHANGE
   with type symbol = [`XBTUSD]
