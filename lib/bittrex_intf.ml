@@ -108,6 +108,7 @@ module type EXCHANGE = sig
   type trade
   type order_types
   type time_in_force
+  type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
@@ -130,7 +131,7 @@ module type EXCHANGE = sig
         an unix timestamp in nanoseconds. *)
 
   val balance : credentials -> (int64 Balance.t list, err) result t
-  val positions : credentials -> (Symbol.t * int64 Mt.Tick.T.t list, err) result t
+  val positions : credentials -> (position list, err) result t
   val orders : credentials -> (order_status list, err) result t
   val new_order : credentials -> order -> (int, err) result t
   val order_status : credentials -> int -> (order_status, err) result t
@@ -146,6 +147,10 @@ module type BITFINEX = EXCHANGE
    and type trade = (int64, int64) Tick.TDTS.t
    and type order_types = [`Market | `Limit | `Stop]
    and type time_in_force = [ `Good_till_canceled | `Fill_or_kill]
+   and type position = < id : int; p : int64; pl : int64;
+                         status : [`Active | `Unset ];
+                         swap : int64; symbol : [`XBTUSD | `LTCUSD | `LTCXBT];
+                         ts : int64; v : int64 >
 
 module type BITSTAMP = EXCHANGE
   with type symbol = [`XBTUSD]

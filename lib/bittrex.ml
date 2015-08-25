@@ -52,6 +52,10 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type nonrec credentials = credentials
   type order_types = [`Market | `Limit | `Stop ]
   type time_in_force = [`Good_till_canceled | `Fill_or_kill]
+  type position = < id : int; p : int64; pl : int64;
+                    status : [`Active | `Unset ];
+                    swap : int64; symbol : symbol; ts : int64;
+                    v : int64 >
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
@@ -322,8 +326,39 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       create_request ~symbol ~amount ~price ~exchange ~side ~type_ ~is_hidden ()
   end
 
+  module Position = struct
+    module T = struct
+      type t = {
+        id: int;
+        symbol: string;
+        status: string;
+        base: string;
+        amount: string;
+        timestamp: string;
+        swap: string;
+        pl: string;
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
+
+    let of_raw p =
+      object
+        method id = p.id
+        method symbol = symbol_of_string_exn p.symbol
+        method status = match p.status with "ACTIVE" -> `Active | _ -> `Unset
+        method p = satoshis_of_string_exn p.base
+        method v = satoshis_of_string_exn p.amount
+        method ts = timestamp_of_string p.timestamp
+        method swap = satoshis_of_string_exn p.swap
+        method pl = satoshis_of_string_exn p.pl
+      end
+  end
+
   let positions creds =
-    post creds "/v1/positions" "" (fun json -> R.fail `Not_implemented)
+    let open Position in
+    post creds "/v1/positions" "" ts_of_json >>| fun positions ->
+    R.map positions (List.map of_raw)
 
   let orders creds =
     let open Order.Status in
@@ -372,6 +407,7 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   type nonrec credentials = credentials
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
+  type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
@@ -777,6 +813,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   type nonrec credentials = credentials
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
+  type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 
@@ -1018,6 +1055,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   type nonrec credentials = credentials
   type order_types = [`Market | `Limit]
   type time_in_force = [`Good_till_canceled]
+  type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
 

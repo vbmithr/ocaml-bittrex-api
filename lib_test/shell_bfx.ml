@@ -50,7 +50,7 @@ let main () =
        | "positions" ->
          (Bitfinex.positions creds >>| function
            | Ok positions ->
-             Log.error log "Not impl."
+             List.iter ~f:(fun p -> Log.info log "%d" p#id) positions
            | Error err ->
              Log.error log "%s" @@ show_err err
          )
