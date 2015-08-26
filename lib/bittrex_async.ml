@@ -41,7 +41,8 @@ module Bitfinex = struct
         let open Nocrypto in
         Log.debug log "-> %s" body;
         let uri = Uri.of_string @@ base_uri ^ endp in
-        let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) in
+        let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) |> Int63.to_string in
+        Log.debug log "Using nonce %s" nonce;
         let body =
           try Yojson.Safe.from_string body
           with _ -> `Assoc [] in
@@ -49,7 +50,7 @@ module Bitfinex = struct
           match body with
           | `Assoc params ->
             `Assoc (["request", `String endp;
-                     "nonce", `String (Int63.to_string nonce);
+                     "nonce", `String nonce;
                     ] @ params)
           | _ -> invalid_arg "bitfinex post body must be a json dict"
         in

@@ -61,7 +61,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type filled_order_status =
     < fee_amount : int64; fee_currency : Mt.Currency.t;
       order_id : int64; p : int64; side : [ `Buy | `Sell ];
-      tid : int64; ts : int64; v : int64 >
+      symbol : symbol; tid : int64; ts : int64; v : int64 >
   let kind = `Bitfinex
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
 
@@ -98,6 +98,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | `XBTUSD -> "BTCUSD"
     | `LTCUSD -> "LTCUSD"
     | `LTCXBT -> "LTCBTC"
+
+  let symbol_of_string_exn = function
+    | "BTCUSD" -> `XBTUSD
+    | "LTCUSD" -> `LTCUSD
+    | "LTCBTC" -> `LTCXBT
+    | _ -> invalid_arg "symbol_of_string_exn"
 
   let bidask_of_string = function
     | "buy" -> `Bid
@@ -385,10 +391,11 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     include T
     include Stringable.Of_jsonable(T)
 
-    let of_raw t =
+    let of_raw ~symbol t =
       object
         method tid = t.tid
         method order_id = t.order_id
+        method symbol = symbol
         method p = satoshis_of_string_exn t.price
         method v = satoshis_of_string_exn t.amount
         method ts = timestamp_of_string t.timestamp
@@ -400,14 +407,25 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
   let filled_orders ?(after=0L) ?(before=Int64.max_int) creds =
     let open Filled_orders in
-    post creds "/v1/mytrades"
-      Yojson.Safe.(to_string @@
-                   `Assoc ["symbol", `String "BTCUSD";
-                           "timestamp", `String Int64.(to_string @@ after / 1_000_000_000L);
-                           "after", `String Int64.(to_string @@ before / 1_000_000_000L);
-                          ])
-      ts_of_json >>| fun filled ->
-    R.map filled (List.map of_raw)
+    let all_filled_orders =
+      List.map
+        (fun sym ->
+           let open Yojson.Safe in
+           post creds "/v1/mytrades"
+             (to_string @@
+              `Assoc ["symbol", `String (string_of_symbol sym);
+                      "timestamp", `String Int64.(to_string @@ after / 1_000_000_000L);
+                      "after", `String Int64.(to_string @@ before / 1_000_000_000L);
+                     ]
+             ) ts_of_json >>| fun filled -> sym, filled
+        ) [`XBTUSD; `LTCUSD; `LTCXBT] in
+    all all_filled_orders >>| fun filled_orders ->
+    R.ok @@
+    CCList.(filter_map
+      (function
+        | symbol, Ok filled -> Some ((List.map (of_raw ~symbol)) filled)
+        | _, Error _ -> None
+      ) filled_orders |> flatten)
 
   let new_order creds order =
     let open Order in

@@ -158,6 +158,7 @@ module type BITFINEX = EXCHANGE
    and type filled_order_status =
          < fee_amount : int64; fee_currency : Mt.Currency.t;
            order_id : int64; p : int64; side : [ `Buy | `Sell ];
+           symbol: [`XBTUSD | `LTCUSD | `LTCXBT];
            tid : int64; ts : int64; v : int64 >
 
 module type BITSTAMP = EXCHANGE
