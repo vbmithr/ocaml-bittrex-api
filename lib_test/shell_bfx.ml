@@ -63,6 +63,14 @@ let main () =
              Log.error log "%s" @@ show_err err
          )
          >>= read_loop
+       | "filled" ->
+         (Bitfinex.filled_orders creds >>| function
+           | Ok orders ->
+             List.iter ~f:(fun o -> Log.info log "%Ld" o#tid) orders
+           | Error err ->
+             Log.error log "%s" @@ show_err err
+         )
+         >>= read_loop
        | "status" ->
          let order_id = List.nth_exn words 1 |> int_of_string in
          (Bitfinex.order_status creds order_id >>| function

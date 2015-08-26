@@ -58,7 +58,10 @@ module Bitfinex (H: HTTP_CLIENT) = struct
                     v : int64 >
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
-
+  type filled_order_status =
+    < fee_amount : int64; fee_currency : Mt.Currency.t;
+      order_id : int64; p : int64; side : [ `Buy | `Sell ];
+      tid : int64; ts : int64; v : int64 >
   let kind = `Bitfinex
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
 
@@ -365,6 +368,47 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     post creds "/v1/orders" "" ts_of_json >>| fun statuses ->
     R.map statuses (List.map of_raw)
 
+  module Filled_orders = struct
+    module T = struct
+      type t = {
+        price: string;
+        amount: string;
+        timestamp: string;
+        exchange: string;
+        type_: string [@key "type"];
+        fee_currency: string;
+        fee_amount: string;
+        tid: int64;
+        order_id: int64;
+      } [@@deriving yojson]
+    end
+    include T
+    include Stringable.Of_jsonable(T)
+
+    let of_raw t =
+      object
+        method tid = t.tid
+        method order_id = t.order_id
+        method p = satoshis_of_string_exn t.price
+        method v = satoshis_of_string_exn t.amount
+        method ts = timestamp_of_string t.timestamp
+        method side = side_of_string @@ String.lowercase t.type_
+        method fee_currency = Currency.of_string_exn t.fee_currency
+        method fee_amount = satoshis_of_string_exn t.fee_amount
+      end
+  end
+
+  let filled_orders ?(after=0L) ?(before=Int64.max_int) creds =
+    let open Filled_orders in
+    post creds "/v1/mytrades"
+      Yojson.Safe.(to_string @@
+                   `Assoc ["symbol", `String "BTCUSD";
+                           "timestamp", `String Int64.(to_string @@ after / 1_000_000_000L);
+                           "after", `String Int64.(to_string @@ before / 1_000_000_000L);
+                          ])
+      ts_of_json >>| fun filled ->
+    R.map filled (List.map of_raw)
+
   let new_order creds order =
     let open Order in
     let order =
@@ -410,6 +454,7 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type filled_order_status
 
   let kind = `Bitstamp
   let symbols = [`XBTUSD]
@@ -500,6 +545,7 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented
   let orders _ = return @@ R.fail `Not_implemented
+  let filled_orders ?after ?before creds = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
   let cancel_order _ _ = return @@ R.fail `Not_implemented
 end
@@ -816,6 +862,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type filled_order_status
 
   let kind = `BTCE
 
@@ -953,6 +1000,7 @@ module BTCE (H: HTTP_CLIENT) = struct
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented
   let orders _ = return @@ R.fail `Not_implemented
+  let filled_orders ?after ?before creds = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
   let cancel_order _ _ = return @@ R.fail `Not_implemented
 end
@@ -1058,6 +1106,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type filled_order_status
 
   let kind = `Kraken
   let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `XBTLTC]
@@ -1202,6 +1251,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented
   let orders _ = return @@ R.fail `Not_implemented
+  let filled_orders ?after ?before creds = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
   let cancel_order _ _ = return @@ R.fail `Not_implemented
 end

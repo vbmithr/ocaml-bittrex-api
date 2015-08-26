@@ -111,6 +111,7 @@ module type EXCHANGE = sig
   type position
   type order = (int64, symbol, order_types, time_in_force) Order.t
   type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type filled_order_status
 
   (* val kind : Exchange.t *)
   val accept : Symbol.t -> symbol option
@@ -133,6 +134,8 @@ module type EXCHANGE = sig
   val balance : credentials -> (int64 Balance.t list, err) result t
   val positions : credentials -> (position list, err) result t
   val orders : credentials -> (order_status list, err) result t
+  val filled_orders : ?after:int64 -> ?before:int64 -> credentials ->
+    (filled_order_status list, err) result t
   val new_order : credentials -> order -> (int, err) result t
   val order_status : credentials -> int -> (order_status, err) result t
   val cancel_order : credentials -> int -> (unit, err) result t
@@ -147,10 +150,15 @@ module type BITFINEX = EXCHANGE
    and type trade = (int64, int64) Tick.TDTS.t
    and type order_types = [`Market | `Limit | `Stop]
    and type time_in_force = [ `Good_till_canceled | `Fill_or_kill]
-   and type position = < id : int; p : int64; pl : int64;
-                         status : [`Active | `Unset ];
-                         swap : int64; symbol : [`XBTUSD | `LTCUSD | `LTCXBT];
-                         ts : int64; v : int64 >
+   and type position =
+         < id : int; p : int64; pl : int64;
+           status : [`Active | `Unset ];
+           swap : int64; symbol : [`XBTUSD | `LTCUSD | `LTCXBT];
+           ts : int64; v : int64 >
+   and type filled_order_status =
+         < fee_amount : int64; fee_currency : Mt.Currency.t;
+           order_id : int64; p : int64; side : [ `Buy | `Sell ];
+           tid : int64; ts : int64; v : int64 >
 
 module type BITSTAMP = EXCHANGE
   with type symbol = [`XBTUSD]
