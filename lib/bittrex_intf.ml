@@ -212,4 +212,10 @@ module type GENERIC = sig
   val positions : credentials ->
     exchange:Exchange.t ->
     (< id: int; p:int64; v:int64; symbol: Symbol.t > list, err) result t
+
+  val filled_orders : ?after:int64 -> ?before:int64 -> credentials ->
+    exchange:Exchange.t ->
+    (< order_id : int64; p : int64; side : [ `Buy | `Sell ];
+       symbol: Symbol.t;
+       tid : int64; ts : int64; v : int64 > list, err) result t
 end

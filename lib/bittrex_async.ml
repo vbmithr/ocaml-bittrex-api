@@ -42,7 +42,6 @@ module Bitfinex = struct
         Log.debug log "-> %s" body;
         let uri = Uri.of_string @@ base_uri ^ endp in
         let nonce = Time_ns.(now () |> to_int63_ns_since_epoch) |> Int63.to_string in
-        Log.debug log "Using nonce %s" nonce;
         let body =
           try Yojson.Safe.from_string body
           with _ -> `Assoc [] in
@@ -343,4 +342,15 @@ module Generic = struct
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 
+  let filled_orders ?after ?before credentials ~exchange =
+    match exchange with
+    | `Bitfinex -> (Bitfinex.filled_orders ?after ?before credentials :>
+                      (< order_id : int64; p : int64; side : [ `Buy | `Sell ];
+                       symbol: Symbol.t;
+                       tid : int64; ts : int64; v : int64 > list, err) result t)
+    | `Bitstamp -> invalid_arg "Not implemented"
+    | `BTCE -> invalid_arg "Not implemented"
+    | `Kraken -> invalid_arg "Not implemented"
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
 end

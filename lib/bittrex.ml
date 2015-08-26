@@ -418,7 +418,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
                       "after", `String Int64.(to_string @@ before / 1_000_000_000L);
                      ]
              ) ts_of_json >>| fun filled -> sym, filled
-        ) [`XBTUSD; `LTCUSD; `LTCXBT] in
+        ) [`XBTUSD; (* `LTCUSD; `LTCXBT *)] in (* FIXME: workaround Bitfinex bad API call. *)
     all all_filled_orders >>| fun filled_orders ->
     R.ok @@
     CCList.(filter_map
