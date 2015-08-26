@@ -69,7 +69,6 @@ module Bitfinex = struct
         body
       in
       trap_exn f
-
   end
   include Bitfinex(H)
 end
@@ -168,8 +167,7 @@ module Kraken = struct
   module H = struct
     include AsyncIO
 
-    let version = "0"
-    let base_uri = "https://api.kraken.com/" ^ version ^ "/"
+    let base_uri = "https://api.kraken.com"
 
     let get ~endp ~params =
       let f () =
@@ -183,32 +181,36 @@ module Kraken = struct
     let post ~creds:{key; secret} ~endp ~body =
       let f () =
         let open Nocrypto in
-        let uri_str = base_uri ^ endp in
-        let uri_str_len = String.length uri_str in
-        let nonce = Time_ns.(now () |> to_int63_ns_since_epoch |> Int63.to_int64) in
+        let endp_len = String.length endp in
+        let nonce = Time_ns.(now () |> to_int63_ns_since_epoch |> Int63.to_string) in
+        let body = Uri.(encoded_of_query @@ ("nonce", [nonce]) :: query_of_encoded body) in
+        let nonce_len = String.length nonce in
         let body_len = String.length body in
+
         let sha256 = Hash.SHA256.init () in
-        EndianBigstring.BigEndian.set_int64 buf 0 nonce;
-        Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:8);
-        Bigstring.From_string.blit body 0 buf 0 body_len;
-        Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~off:0 ~len:body_len);
+        Bigstring.From_string.blito nonce buf ();
+        Hash.SHA256.feed sha256 @@ Cstruct.of_bigarray buf ~len:nonce_len;
+        Bigstring.From_string.blito body buf ();
+        Hash.SHA256.feed sha256 (Cstruct.of_bigarray buf ~len:body_len);
         let sha256 = Hash.SHA256.get sha256 in
 
-        Bigstring.From_string.blit uri_str 0 buf 0 uri_str_len;
-        Cstruct.(Bigstring.blit ~src:sha256.buffer ~src_pos:0
-                   ~dst:buf ~dst_pos:uri_str_len ~len:sha256.len);
+        Bigstring.From_string.blito endp buf ();
+        Cstruct.(Bigstring.blito ~src:sha256.buffer ~src_len:sha256.len
+                   ~dst:buf ~dst_pos:(String.length endp) ());
         let sign = Hash.SHA512.hmac ~key:(Base64.decode secret) @@
-          Cstruct.(of_bigarray buf ~off:0 ~len:(uri_str_len + sha256.len))
+          Cstruct.(of_bigarray buf ~len:(endp_len + sha256.len))
         in
         let headers = Cohttp.Header.of_list
             ["content-type", "application/x-www-form-urlencoded";
              "API-Key", Cstruct.to_string key;
              "API-Sign", Cstruct.to_string @@ Base64.encode sign;
             ] in
-        let uri = Uri.of_string uri_str in
+        let uri = Uri.of_string @@ base_uri ^ endp in
         let body = Cohttp_async.Body.of_string body in
         Client.post ~headers ~body uri >>= fun (resp, body) ->
-        Body.to_string body in
+        Body.to_string body >>| fun body ->
+        Log.debug log "<- %s" body;
+        body in
       trap_exn f
   end
   include Kraken(H)

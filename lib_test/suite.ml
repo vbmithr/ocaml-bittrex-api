@@ -33,7 +33,7 @@ let run_tests syms (e, cred) =
 let main exchanges symbols =
   let exchanges = List.filter_map exchanges ~f:Exchange.of_string in
   let symbols = List.filter_map symbols ~f:Symbol.of_string in
-  let creds = Config.load ".credentials" |> function
+  let creds = Config.load @@ Sys.getenv_exn "HOME" ^ "/.exchanges-api-keys" |> function
     | `Error str ->
       Log.error log "Unable to load credentials: %s" str;
       []

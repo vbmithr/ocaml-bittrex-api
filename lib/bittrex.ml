@@ -1192,7 +1192,7 @@ module Kraken (H: HTTP_CLIENT) = struct
       o: string;
     } [@@deriving yojson]
 
-    let ticker p = get "public/Ticker" ["pair", string_of_symbol p]
+    let ticker p = get "/0/public/Ticker" ["pair", string_of_symbol p]
         (function | `Assoc [_, t] -> of_yojson t
                   | json -> `Error (Yojson.Safe.to_string json))
 
@@ -1223,7 +1223,7 @@ module Kraken (H: HTTP_CLIENT) = struct
         (try `Ok (book_of_json bids, book_of_json asks) with Exit -> `Error "book")
       | json -> `Error (Yojson.Safe.to_string json) in
 
-    get "public/Depth" ["pair", string_of_symbol p]
+    get "/0/public/Depth" ["pair", string_of_symbol p]
       (function | `Assoc [_, t] -> lift_f t
                 | json -> `Error (Yojson.Safe.to_string json))
 
@@ -1258,13 +1258,13 @@ module Kraken (H: HTTP_CLIENT) = struct
               ~m
             )
       | json -> `Error (Yojson.Safe.to_string json) in
-    get "public/Trades" (("pair", string_of_symbol p) ::
+    get "/0/public/Trades" (("pair", string_of_symbol p) ::
     (if since = -1L then [] else ["since", Int64.to_string since]))
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | json -> `Error (Yojson.Safe.to_string json))
 
   let balance creds =
-    post creds "private/Balance" [] (fun json -> `Error "")
+    post creds "/0/private/Balance" [] (fun json -> `Error "")
 
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented
