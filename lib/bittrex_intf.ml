@@ -199,4 +199,8 @@ module type GENERIC = sig
 
   val balance : credentials ->
     exchange:Exchange.t -> (int64 Balance.t list, err) result t
+
+  val positions : credentials ->
+    exchange:Exchange.t ->
+    (< id: int; p:int64; v:int64; symbol: Symbol.t > list, err) result t
 end
