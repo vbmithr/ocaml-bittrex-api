@@ -488,8 +488,8 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
   type position
-  type order = (int64, symbol, order_types, time_in_force) Order.t
-  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type order
+  type order_status
   type filled_order_status
 
   let kind = `Bitstamp
@@ -896,8 +896,8 @@ module BTCE (H: HTTP_CLIENT) = struct
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
   type position
-  type order = (int64, symbol, order_types, time_in_force) Order.t
-  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type order
+  type order_status
   type filled_order_status
 
   let kind = `BTCE
