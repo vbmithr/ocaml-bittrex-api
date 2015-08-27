@@ -131,7 +131,12 @@ module type EXCHANGE = sig
         will not contain trades older than [since], where [since] is
         an unix timestamp in nanoseconds. *)
 
-  val balance : credentials -> (int64 Balance.t list, err) result t
+  val balance : credentials -> (< currency : Currency.t;
+                                  balance : int64;
+                                  available : int64;
+                                  reserved : int64;
+                                > list, err) result t
+
   val positions : credentials -> (position list, err) result t
   val orders : credentials -> (order_status list, err) result t
   val filled_orders : ?after:int64 -> ?before:int64 -> credentials ->
@@ -207,7 +212,16 @@ module type GENERIC = sig
     exchange:[< Exchange.t] ->  unit -> (trade list, err) result t
 
   val balance : credentials ->
-    exchange:Exchange.t -> (int64 Balance.t list, err) result t
+    exchange:Exchange.t -> (< currency : Currency.t;
+                              balance : int64;
+                              available : int64;
+                              reserved : int64;
+                            > list, err) result t
+
+  val orders : credentials ->
+    exchange:Exchange.t -> ((int64, Symbol.t, Exchange.t,
+                             Order.order_type, Order.time_in_force, int64)
+                              Order.status list, err) result t
 
   val positions : credentials ->
     exchange:Exchange.t ->

@@ -258,10 +258,17 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
     let of_raw t =
       if t.type_ = "trading" then
-        Some (new Mt.Balance.t
-          ~currency:(CCOpt.get_exn @@ Currency.of_string t.currency)
-          ~amount:(satoshis_of_string_exn t.amount)
-          ~available:(satoshis_of_string_exn t.available))
+        let currency = CCOpt.get_exn @@ Currency.of_string t.currency in
+        let balance = satoshis_of_string_exn t.amount in
+        let available = satoshis_of_string_exn t.available in
+        let reserved = Int64.(sub balance available) in
+        Some
+          (object
+            method currency = currency
+            method balance = balance
+            method available = available
+            method reserved = reserved
+          end)
       else None
   end
 
@@ -1263,8 +1270,32 @@ module Kraken (H: HTTP_CLIENT) = struct
       (function | `Assoc [_, `List trades; _] -> CCError.map_l trade_of_json trades
                 | json -> `Error (Yojson.Safe.to_string json))
 
+  module Balance = struct
+    type t = {
+      eb: string;
+      tb: string;
+      m: string;
+      n: string;
+      c: string;
+      v: string;
+      e: string;
+      mf: string;
+      ml: (string [@default ""]);
+    } [@@deriving yojson]
+
+    let of_raw t =
+      object
+        method currency = `USD
+        method balance = satoshis_of_string_exn t.tb
+        method available = satoshis_of_string_exn t.mf
+        method reserved = satoshis_of_string_exn t.m
+      end
+  end
+
   let balance creds =
-    post creds "/0/private/Balance" [] (fun json -> `Error "")
+    let open Balance in
+    post creds "/0/private/TradeBalance" [] of_yojson >>| fun balance ->
+    R.map balance (fun b -> [of_raw b])
 
   let new_order _ _ = return @@ R.fail `Not_implemented
   let positions _ = return @@ R.fail `Not_implemented

@@ -344,6 +344,14 @@ module Generic = struct
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 
+  let orders credentials ~exchange = match exchange with
+    | `Bitfinex -> Bitfinex.orders credentials
+    | `Bitstamp -> invalid_arg "Not implemented"
+    | `BTCE -> invalid_arg "Not implemented"
+    | `Kraken -> invalid_arg "Not implemented"
+    | `OKCoin -> invalid_arg "Not implemented"
+    | `Coinbase -> invalid_arg "Not implemented"
+
   let filled_orders ?after ?before credentials ~exchange =
     match exchange with
     | `Bitfinex -> (Bitfinex.filled_orders ?after ?before credentials :>
