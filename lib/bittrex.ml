@@ -50,14 +50,26 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type book_entry = int64 Tick.T.t
   type trade = (int64, int64) Tick.TDTS.t
   type nonrec credentials = credentials
-  type order_types = [`Market | `Limit | `Stop ]
-  type time_in_force = [`Good_till_canceled | `Fill_or_kill]
   type position = < id : int; p : int64; pl : int64;
                     status : [`Active | `Unset ];
                     swap : int64; symbol : symbol; ts : int64;
                     v : int64 >
-  type order = (int64, symbol, order_types, time_in_force) Order.t
-  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type order
+  type order_status =
+    < avg_fill_price : int64;
+      exchange : Exchange.t;
+      exchange_order_id : string;
+      expire_ts : int64;
+      filled_qty : int64;
+      order_qty : int64;
+      order_type : [ `Limit | `Market
+                   | `Market_if_touched | `Stop | `Stop_limit ];
+      p1 : int64;
+      p2 : int64;
+      side : [ `Buy | `Sell ];
+      symbol : Symbol.t;
+      time_in_force : [ `Fill_or_kill | `Good_till_canceled | `Good_till_date_time ]
+    >
   type filled_order_status =
     < fee_amount : int64; fee_currency : Mt.Currency.t;
       order_id : int64; p : int64; side : [ `Buy | `Sell ];
@@ -314,21 +326,20 @@ module Bitfinex (H: HTTP_CLIENT) = struct
       let of_raw s =
         let side = side_of_string s.side in
         let order_type, time_in_force = ot_tif_of_string s.type_ in
-        new Mt.Order.status
-          ~ts:(timestamp_of_string s.timestamp)
-          ~symbol:(symbol_of_string_exn s.symbol)
-          ~exchange:(exchange_of_string_exn s.exchange)
-          ~exchange_order_id:s.id
-          ~p1:(satoshis_of_string_exn s.price)
-          ~avg_fill_price:(satoshis_of_string_exn s.avg_execution_price)
-          ~side
-          ~order_type ~time_in_force
-          ~order_qty:(satoshis_of_string_exn s.original_amount)
-          ~filled_qty:(satoshis_of_string_exn s.executed_amount)
-          ~remaining_qty:(satoshis_of_string_exn s.remaining_amount)
-          ~status:`Open
-          ~update_reason:`New_order_accepted
-          ()
+        object
+          method exchange_order_id = string_of_int s.id
+          method symbol = symbol_of_string_exn s.symbol
+          method exchange = exchange_of_string_exn s.exchange
+          method p1 = satoshis_of_string_exn s.price
+          method p2 = 0L
+          method order_qty = satoshis_of_string_exn s.original_amount
+          method filled_qty = satoshis_of_string_exn s.executed_amount
+          method avg_fill_price = satoshis_of_string_exn s.avg_execution_price
+          method side = side
+          method order_type = order_type
+          method time_in_force = time_in_force
+          method expire_ts = 0L
+        end
     end
 
     let create_request ?(is_hidden=false)
@@ -1129,8 +1140,22 @@ module Kraken (H: HTTP_CLIENT) = struct
   type order_types = [`Market | `Limit]
   type time_in_force = [`Good_till_canceled]
   type position
-  type order = (int64, symbol, order_types, time_in_force) Order.t
-  type order_status = (int64, symbol, exchange, order_types, time_in_force, int64) Order.status
+  type order
+  type order_status =
+    < avg_fill_price : int64;
+      exchange : Exchange.t;
+      exchange_order_id : string;
+      expire_ts : int64;
+      filled_qty : int64;
+      order_qty : int64;
+      order_type : [ `Limit | `Market
+                   | `Market_if_touched | `Stop | `Stop_limit ];
+      p1 : int64;
+      p2 : int64;
+      side : [ `Buy | `Sell ];
+      symbol : Symbol.t;
+      time_in_force : [ `Good_till_canceled | `Good_till_date_time ]
+    >
   type filled_order_status
 
   let kind = `Kraken
@@ -1153,6 +1178,19 @@ module Kraken (H: HTTP_CLIENT) = struct
     | `XBTEUR -> "XXBTZEUR"
     | `LTCEUR -> "XLTCZEUR"
     | `XBTLTC -> "XXBTXLTC"
+
+  let symbol_of_string_short_exn = function
+    | "XBTEUR" -> `XBTEUR
+    | "XBTUSD" -> `XBTUSD
+    | _ -> invalid_arg "symbol_of_string_short_exn"
+
+  let ordertype_of_string_exn = function
+    | "market" -> `Market
+    | "limit" -> `Limit
+    | "stop-loss" -> `Stop
+    | "stop-loss-limit" -> `Stop_limit
+    | "take-profit" -> `Market_if_touched
+    | _ -> invalid_arg "ordertype_of_string_exn"
 
   type 'a error_monad = {
     error: string list;
@@ -1297,9 +1335,73 @@ module Kraken (H: HTTP_CLIENT) = struct
     post creds "/0/private/TradeBalance" [] of_yojson >>| fun balance ->
     R.map balance (fun b -> [of_raw b])
 
+  let positions creds =
+    post creds "/0/private/OpenPositions" [] (fun json -> `Error "not impl")
+
+  module Orders = struct
+    type descr = {
+      pair: string;
+      type_: string [@key "type"];
+      ordertype: string;
+      price: string;
+      price2: string;
+      leverage: string;
+      order: string;
+      close: (string [@default ""]);
+    } [@@deriving yojson]
+
+    type t = {
+      refid: string option;
+      userref: string option;
+      status: string;
+      opentm: float;
+      starttm: float;
+      expiretm: float;
+      descr: descr;
+      vol: string;
+      vol_exec: string;
+      cost: string;
+      fee: string;
+      price: string;
+      stopprice: (string [@default ""]);
+      limitprice: (string [@default ""]);
+      misc: string;
+      oflags: string;
+      trades: (string list [@default []]);
+    } [@@deriving yojson]
+
+    let of_raw (txid, json) =
+      CCError.map
+        (fun t ->
+           object
+             method exchange_order_id = txid
+             method symbol = symbol_of_string_short_exn t.descr.pair
+             method exchange = `Kraken
+             method p1 = satoshis_of_string_exn t.descr.price
+             method p2 = satoshis_of_string_exn t.descr.price2
+             method order_qty = satoshis_of_string_exn t.vol
+             method filled_qty = satoshis_of_string_exn t.vol_exec
+             method avg_fill_price = satoshis_of_string_exn t.price
+             method side = match t.descr.type_ with "buy" -> `Buy | _ -> `Sell
+             method order_type = ordertype_of_string_exn t.descr.ordertype
+             method time_in_force = match t.expiretm with
+               | 0. -> `Good_till_canceled
+               | _ -> `Good_till_date_time
+             method expire_ts = Int64.of_float @@ t.expiretm *. 1e9
+           end) (of_yojson json) |> CCError.to_opt
+  end
+
+  let orders creds =
+    let open Orders in
+    post creds "/0/private/OpenOrders" []
+      (function
+        | `Assoc ["open", `Assoc orders] ->
+          `Ok (CCList.filter_map of_raw orders)
+        | json ->
+          `Error Yojson.Safe.(to_string json)
+      )
+
   let new_order _ _ = return @@ R.fail `Not_implemented
-  let positions _ = return @@ R.fail `Not_implemented
-  let orders _ = return @@ R.fail `Not_implemented
   let filled_orders ?after ?before creds = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
   let cancel_order _ _ = return @@ R.fail `Not_implemented

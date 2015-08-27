@@ -340,7 +340,9 @@ module Generic = struct
                        symbol : Symbol.t > list, err) result t)
     | `Bitstamp -> invalid_arg "Not implemented"
     | `BTCE -> invalid_arg "Not implemented"
-    | `Kraken -> invalid_arg "Not implemented"
+    | `Kraken -> (Kraken.positions credentials :>
+                      (< id : int; p : int64; v : int64;
+                       symbol : Symbol.t > list, err) result t)
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 
@@ -348,7 +350,7 @@ module Generic = struct
     | `Bitfinex -> Bitfinex.orders credentials
     | `Bitstamp -> invalid_arg "Not implemented"
     | `BTCE -> invalid_arg "Not implemented"
-    | `Kraken -> invalid_arg "Not implemented"
+    | `Kraken -> Kraken.orders credentials
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 

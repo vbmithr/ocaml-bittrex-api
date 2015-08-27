@@ -77,7 +77,7 @@ let main () =
        | "orders" ->
          (Generic.orders !current_creds !current_exchange >>| function
            | Ok orders ->
-             List.iter ~f:(fun o -> Log.info log "%d" o#exchange_order_id) orders
+             List.iter ~f:(fun o -> Log.info log "%s" o#exchange_order_id) orders
            | Error err ->
              Log.error log "%s" @@ show_err err
          )
