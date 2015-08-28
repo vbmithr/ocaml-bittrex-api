@@ -48,7 +48,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   type exchange = [`Bitfinex | `Bitstamp]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
-  type trade = (int64, int64) Tick.TDTS.t
+  type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
   type nonrec credentials = credentials
   type position = < id : int; p : int64; pl : int64;
                     status : [`Active | `Unset ];
@@ -72,8 +72,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     >
   type filled_order_status =
     < fee_amount : int64; fee_currency : Mt.Currency.t;
-      order_id : int64; p : int64; side : [ `Buy | `Sell ];
-      symbol : symbol; tid : int64; ts : int64; v : int64 >
+      order_id : string; p : int64; side : [ `Buy | `Sell ];
+      symbol : symbol; tid : string; ts : int64; v : int64 >
   let kind = `Bitfinex
   let symbols = [`XBTUSD; `LTCUSD; `LTCXBT]
 
@@ -116,15 +116,6 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     | "LTCUSD" -> `LTCUSD
     | "LTCBTC" -> `LTCXBT
     | _ -> invalid_arg "symbol_of_string_exn"
-
-  let bidask_of_string = function
-    | "buy" -> `Bid
-    | "sell" -> `Ask
-    | _ -> invalid_arg "bidask_of_string"
-
-  let string_of_bidask = function
-    | `Bid -> "buy"
-    | `Ask -> "sell"
 
   let side_of_string = function
     | "buy" -> `Buy
@@ -242,11 +233,12 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         ts_of_json
 
     let of_raw t =
-      new Tick.TDTS.t
-        ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
-        ~p:(satoshis_of_string_exn t.price)
-        ~v:(satoshis_of_string_exn t.amount)
-        ~d:(bidask_of_string t.type_)
+      object
+        method ts = Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
+        method p = satoshis_of_string_exn t.price
+        method v = satoshis_of_string_exn t.amount
+        method side = side_of_string t.type_
+      end
   end
 
   let trades ?since ?limit p =
@@ -392,9 +384,11 @@ module Bitfinex (H: HTTP_CLIENT) = struct
     post creds "/v1/orders" "" ts_of_json >>| fun statuses ->
     R.map statuses (List.map of_raw)
 
-  module Filled_orders = struct
+  module Filled_order = struct
     module T = struct
       type t = {
+        tid: int64;
+        order_id: int64;
         price: string;
         amount: string;
         timestamp: string;
@@ -402,8 +396,6 @@ module Bitfinex (H: HTTP_CLIENT) = struct
         type_: string [@key "type"];
         fee_currency: string;
         fee_amount: string;
-        tid: int64;
-        order_id: int64;
       } [@@deriving yojson]
     end
     include T
@@ -411,8 +403,8 @@ module Bitfinex (H: HTTP_CLIENT) = struct
 
     let of_raw ~symbol t =
       object
-        method tid = t.tid
-        method order_id = t.order_id
+        method tid = Int64.to_string t.tid
+        method order_id = Int64.to_string t.order_id
         method symbol = symbol
         method p = satoshis_of_string_exn t.price
         method v = satoshis_of_string_exn t.amount
@@ -424,7 +416,7 @@ module Bitfinex (H: HTTP_CLIENT) = struct
   end
 
   let filled_orders ?(after=0L) ?(before=Int64.max_int) creds =
-    let open Filled_orders in
+    let open Filled_order in
     let all_filled_orders =
       List.map
         (fun sym ->
@@ -483,7 +475,7 @@ module Bitstamp (H: HTTP_CLIENT) = struct
   type exchange = [`Bitstamp]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
-  type trade = (int64, int64) Tick.TDTS.t
+  type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
   type nonrec credentials = credentials
   type order_types = [`Limit]
   type time_in_force = [`Good_till_canceled]
@@ -891,10 +883,8 @@ module BTCE (H: HTTP_CLIENT) = struct
   type exchange = [`BTCE]
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
-  type trade = (int64, int64) Tick.TDTS.t
+  type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
   type nonrec credentials = credentials
-  type order_types = [`Limit]
-  type time_in_force = [`Good_till_canceled]
   type position
   type order
   type order_status
@@ -1020,15 +1010,12 @@ module BTCE (H: HTTP_CLIENT) = struct
     trades p >>| fun trades ->
     R.(trades >>|
        List.map (fun t ->
-           new Tick.TDTS.t
-             ~ts:Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
-             ~p:(satoshis_of_float_exn t.price)
-             ~v:(satoshis_of_float_exn t.amount)
-             ~d:(match t.type_ with
-                 | "bid" -> `Bid
-                 | "ask" -> `Ask
-                 | _ -> `Unset
-               )
+           object
+             method ts = Int64.(of_int t.timestamp * 1_000_000_000L + of_int t.tid)
+             method p = satoshis_of_float_exn t.price
+             method v = satoshis_of_float_exn t.amount
+             method side = match t.type_ with "bid" -> `Buy | _ -> `Sell
+           end
          )
       )
 
@@ -1135,12 +1122,20 @@ module Kraken (H: HTTP_CLIENT) = struct
   type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
   type exchange = [`Kraken]
   type ticker = (int64, int64) Ticker.Tvwap.t
+  type trade =
+    < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64;
+      order_type : [`Market | `Limit | `Unset]; misc : string;
+    >
   type book_entry = (int64, int64) Tick.TTS.t
   type nonrec credentials = credentials
   type order_types = [`Market | `Limit]
   type time_in_force = [`Good_till_canceled]
   type position
   type order
+  type filled_order_status =
+    < fee_amount : int64; fee_currency : Mt.Currency.t;
+      order_id : string; p : int64; side : [ `Buy | `Sell ];
+      symbol : symbol; tid : string; ts : int64; v : int64 >
   type order_status =
     < avg_fill_price : int64;
       exchange : Exchange.t;
@@ -1156,7 +1151,6 @@ module Kraken (H: HTTP_CLIENT) = struct
       symbol : Symbol.t;
       time_in_force : [ `Good_till_canceled | `Good_till_date_time ]
     >
-  type filled_order_status
 
   let kind = `Kraken
   let symbols = [`XBTUSD; `LTCUSD; `XBTEUR; `LTCEUR; `XBTLTC]
@@ -1179,9 +1173,11 @@ module Kraken (H: HTTP_CLIENT) = struct
     | `LTCEUR -> "XLTCZEUR"
     | `XBTLTC -> "XXBTXLTC"
 
-  let symbol_of_string_short_exn = function
+  let symbol_of_string_exn = function
     | "XBTEUR" -> `XBTEUR
+    | "XXBTZEUR" -> `XBTEUR
     | "XBTUSD" -> `XBTUSD
+    | "XXBTZUSD" -> `XBTUSD
     | _ -> invalid_arg "symbol_of_string_short_exn"
 
   let ordertype_of_string_exn = function
@@ -1272,36 +1268,32 @@ module Kraken (H: HTTP_CLIENT) = struct
       (function | `Assoc [_, t] -> lift_f t
                 | json -> `Error (Yojson.Safe.to_string json))
 
-  class trade ~p ~v ~ts ~d ~k ~m =
-    object
-      inherit [int64, int64] Tick.TDTS.t ~p ~v ~ts ~d
-      method kind : [`Market | `Limit | `Unset] = k
-      method misc : string = m
-    end
-
-  let trades ?(since = -1L) ?(limit = -1) p =
+  let ts_of_float ts =
     let ns_of_float ts =
       let s = Printf.sprintf "%.9f" ts in
       Int64.of_string @@ String.(sub s (index s '.' + 1) 9) in
+    Int64.(of_int (truncate ts) * 1_000_000_000L + ns_of_float ts)
+
+  let trades ?(since = -1L) ?(limit = -1) p =
     let trade_of_json = function
       | `List [`String p; `String v; `Int ts; `String d; `String k; `String m] ->
-        `Ok (new trade
-              ~ts:Int64.(of_int ts * 1_000_000_000L)
-              ~p:(satoshis_of_string_exn p)
-              ~v:(satoshis_of_string_exn v)
-              ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
-              ~k:(match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset)
-              ~m
-            )
+        `Ok (object
+          method ts = Int64.(of_int ts * 1_000_000_000L)
+          method p = satoshis_of_string_exn p
+          method v = satoshis_of_string_exn v
+          method side = match d with "b" -> `Buy | _ -> `Sell
+          method order_type = match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset
+          method misc = m
+        end)
       | `List [`String p; `String v; `Float ts; `String d; `String k; `String m] ->
-        `Ok (new trade
-              ~ts:Int64.(of_int (truncate ts) * 1_000_000_000L + ns_of_float ts)
-              ~p:(satoshis_of_string_exn p)
-              ~v:(satoshis_of_string_exn v)
-              ~d:(match d with "b" -> `Bid | "s" -> `Ask | _ -> `Unset)
-              ~k:(match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset)
-              ~m
-            )
+        `Ok (object
+          method ts = ts_of_float ts
+          method p = satoshis_of_string_exn p
+          method v = satoshis_of_string_exn v
+          method side = match d with "b" -> `Buy | _ -> `Sell
+          method order_type = match k with "l" -> `Limit | "m" -> `Market | _ -> `Unset
+          method misc = m
+        end)
       | json -> `Error (Yojson.Safe.to_string json) in
     get "/0/public/Trades" (("pair", string_of_symbol p) ::
     (if since = -1L then [] else ["since", Int64.to_string since]))
@@ -1338,7 +1330,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   let positions creds =
     post creds "/0/private/OpenPositions" [] (fun json -> `Error "not impl")
 
-  module Orders = struct
+  module Order = struct
     type descr = {
       pair: string;
       type_: string [@key "type"];
@@ -1375,7 +1367,7 @@ module Kraken (H: HTTP_CLIENT) = struct
         (fun t ->
            object
              method exchange_order_id = txid
-             method symbol = symbol_of_string_short_exn t.descr.pair
+             method symbol = symbol_of_string_exn t.descr.pair
              method exchange = `Kraken
              method p1 = satoshis_of_string_exn t.descr.price
              method p2 = satoshis_of_string_exn t.descr.price2
@@ -1392,7 +1384,7 @@ module Kraken (H: HTTP_CLIENT) = struct
   end
 
   let orders creds =
-    let open Orders in
+    let open Order in
     post creds "/0/private/OpenOrders" []
       (function
         | `Assoc ["open", `Assoc orders] ->
@@ -1401,8 +1393,57 @@ module Kraken (H: HTTP_CLIENT) = struct
           `Error Yojson.Safe.(to_string json)
       )
 
+  module Filled_order = struct
+    type t = {
+      ordertxid: string;
+      pair: string;
+      time: float;
+      type_: string [@key "type"];
+      ordertype: string;
+      price: string;
+      cost: string;
+      fee: string;
+      vol: string;
+      margin: string;
+      misc: string;
+      closing: (bool [@default false]);
+      posstatus: (string [@default ""]);
+      cprice: (string [@default ""]);
+      ccost: (string [@default ""]);
+      cfee: (string [@default ""]);
+      cvol: (string [@default ""]);
+      cmargin: (string [@default ""]);
+      net: (string [@default ""]);
+      trades: (string list [@default []]);
+    } [@@deriving yojson]
+
+    let of_raw (txid, json) =
+      CCError.map
+        (fun t -> object
+          method tid = txid
+          method order_id = t.ordertxid
+          method p = satoshis_of_string_exn t.price
+          method v = satoshis_of_string_exn t.vol
+          method side = match t.type_ with "buy" -> `Buy | _ -> `Sell
+          method symbol = symbol_of_string_exn t.pair
+          method ts = ts_of_float t.time
+        end) (of_yojson json) |> CCError.to_opt
+  end
+
+  let filled_orders ?(after=0L) ?(before=Int64.max_int) creds =
+    let open Filled_order in
+    post creds "/0/private/TradesHistory"
+      ["start", Int64.(to_string @@ after / 1_000_000_000L);
+       "end", Int64.(to_string @@ before / 1_000_000_000L);
+      ]
+      (function
+        | `Assoc ["trades", `Assoc trades; "count", _] ->
+          `Ok (CCList.filter_map of_raw trades)
+        | json ->
+          `Error (Yojson.Safe.to_string json)
+      )
+
   let new_order _ _ = return @@ R.fail `Not_implemented
-  let filled_orders ?after ?before creds = return @@ R.fail `Not_implemented
   let order_status _ _ = return @@ R.fail `Not_implemented
   let cancel_order _ _ = return @@ R.fail `Not_implemented
 end

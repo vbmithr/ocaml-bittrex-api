@@ -238,7 +238,7 @@ module Generic = struct
   include AsyncIO
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Mt.Tick.T.t
-  type trade = (int64, int64) Mt.Tick.TDTS.t
+  type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
 
   let symbols = function
     | `Bitfinex -> Bitfinex.symbols
@@ -356,13 +356,18 @@ module Generic = struct
 
   let filled_orders ?after ?before credentials ~exchange =
     match exchange with
-    | `Bitfinex -> (Bitfinex.filled_orders ?after ?before credentials :>
-                      (< order_id : int64; p : int64; side : [ `Buy | `Sell ];
-                       symbol: Symbol.t;
-                       tid : int64; ts : int64; v : int64 > list, err) result t)
+    | `Bitfinex ->
+      (Bitfinex.filled_orders ?after ?before credentials :>
+         (< order_id : string; p : int64; side : [ `Buy | `Sell ];
+          symbol: Symbol.t;
+          tid : string; ts : int64; v : int64 > list, err) result t)
     | `Bitstamp -> invalid_arg "Not implemented"
     | `BTCE -> invalid_arg "Not implemented"
-    | `Kraken -> invalid_arg "Not implemented"
+    | `Kraken ->
+      (Kraken.filled_orders ?after ?before credentials :>
+         (< order_id : string; p : int64; side : [ `Buy | `Sell ];
+          symbol: Symbol.t;
+          tid : string; ts : int64; v : int64 > list, err) result t)
     | `OKCoin -> invalid_arg "Not implemented"
     | `Coinbase -> invalid_arg "Not implemented"
 end

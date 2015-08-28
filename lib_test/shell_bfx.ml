@@ -85,7 +85,7 @@ let main () =
        | "filled" ->
          (Generic.filled_orders !current_creds !current_exchange >>| function
            | Ok orders ->
-             List.iter ~f:(fun o -> Log.info log "%Ld" o#tid) orders
+             List.iter ~f:(fun o -> Log.info log "%s" o#tid) orders
            | Error err ->
              Log.error log "%s" @@ show_err err
          )

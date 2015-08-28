@@ -151,7 +151,8 @@ module type BITFINEX = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `LTCXBT]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
-   and type trade = (int64, int64) Tick.TDTS.t
+   and type trade =
+         < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
    and type position =
          < id : int; p : int64; pl : int64;
            status : [`Active | `Unset ];
@@ -159,9 +160,9 @@ module type BITFINEX = EXCHANGE
            ts : int64; v : int64 >
    and type filled_order_status =
          < fee_amount : int64; fee_currency : Mt.Currency.t;
-           order_id : int64; p : int64; side : [ `Buy | `Sell ];
+           order_id : string; p : int64; side : [ `Buy | `Sell ];
            symbol: [`XBTUSD | `LTCUSD | `LTCXBT];
-           tid : int64; ts : int64; v : int64 >
+           tid : string; ts : int64; v : int64 >
    and type order_status =
          < avg_fill_price : int64;
            exchange : Exchange.t;
@@ -181,22 +182,28 @@ module type BITSTAMP = EXCHANGE
   with type symbol = [`XBTUSD]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
-   and type trade = (int64, int64) Tick.TDTS.t
+   and type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
+
 
 module type BTCE = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `LTCXBT]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = int64 Tick.T.t
-   and type trade = (int64, int64) Tick.TDTS.t
+   and type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
 
 module type KRAKEN = EXCHANGE
   with type symbol = [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC]
    and type ticker = (int64, int64) Ticker.Tvwap.t
    and type book_entry = (int64, int64) Tick.TTS.t
    and type trade =
-         < d : [ `Ask | `Bid | `Unset ];
-           kind : [ `Limit | `Market | `Unset ]; misc : string;
+         < side : [ `Buy | `Sell ];
+           order_type : [ `Limit | `Market | `Unset ]; misc : string;
            p : int64; ts : int64; v : int64 >
+   and type filled_order_status =
+         < fee_amount : int64; fee_currency : Mt.Currency.t;
+           order_id : string; p : int64; side : [ `Buy | `Sell ];
+           symbol: [`XBTUSD | `LTCUSD | `XBTEUR | `LTCEUR | `XBTLTC];
+           tid : string; ts : int64; v : int64 >
    and type order_status =
          < avg_fill_price : int64;
            exchange : Exchange.t;
@@ -218,7 +225,7 @@ module type GENERIC = sig
   include IO
   type ticker = (int64, int64) Ticker.Tvwap.t
   type book_entry = int64 Tick.T.t
-  type trade = (int64, int64) Tick.TDTS.t
+  type trade = < p : int64; v : int64; side : [`Buy | `Sell]; ts : int64 >
 
   val price_increment : [< Exchange.t] -> int
   val trade_increment : [< Exchange.t] -> int
@@ -260,7 +267,7 @@ module type GENERIC = sig
 
   val filled_orders : ?after:int64 -> ?before:int64 -> credentials ->
     exchange:Exchange.t ->
-    (< order_id : int64; p : int64; side : [ `Buy | `Sell ];
+    (< order_id : string; p : int64; side : [ `Buy | `Sell ];
        symbol: Symbol.t;
-       tid : int64; ts : int64; v : int64 > list, err) result t
+       tid : string; ts : int64; v : int64 > list, err) result t
 end
