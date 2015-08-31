@@ -16,6 +16,7 @@ depends: [
   "ocamlfind" {build}
   "mt"
   "rresult"
+  "hex"
   "ppx_deriving_yojson"
   "containers"
   "async_ssl"
